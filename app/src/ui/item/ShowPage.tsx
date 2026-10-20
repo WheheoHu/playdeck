@@ -23,6 +23,7 @@ import { FocusButton, useFocusManager, useRegion } from '../focus/react';
 import type { Action } from '../input';
 import { PAD_X, focusedCardRect, imageScale } from '../layout';
 import { type Route, isWatched, useNav } from '../nav';
+import { usePlayback } from '../playback';
 import { useResource } from '../resource';
 import { useServers } from '../servers';
 import { MediaInfo } from './MediaInfo';
@@ -164,9 +165,9 @@ interface StripProps {
 
 /** One season's episodes as a horizontal focus region. */
 function EpisodeStrip({ seasonKey, episodes, initial, onFocusEpisode }: StripProps) {
-  const { t } = useApp();
   const { byId } = useServers();
   const nav = useNav();
+  const playback = usePlayback();
   const manager = useFocusManager();
   const viewport = useRef<HTMLDivElement | null>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -221,7 +222,7 @@ function EpisodeStrip({ seasonKey, episodes, initial, onFocusEpisode }: StripPro
     action: (_focused, action) => {
       const episode = episodes[index.current];
       if (!episode) return false;
-      if (action === 'select') nav.toast(t('item.playSoon'));
+      if (action === 'select') playback.play(episode);
       else if (action === 'context') nav.menu(episode);
       else return false;
       return true;
@@ -282,6 +283,7 @@ export function ShowPage({ show, route, actions }: ShowPageProps) {
   const { plex, t } = useApp();
   const { byId } = useServers();
   const nav = useNav();
+  const playback = usePlayback();
   const manager = useFocusManager();
   const server = byId(show.serverId);
   const info = useRef<InfoHandle>(null);
@@ -345,7 +347,7 @@ export function ShowPage({ show, route, actions }: ShowPageProps) {
           <ItemHeading item={show} />
           <EpisodeInfo ref={info} />
           <div className="item-actions">
-            <FocusButton className="primary" onSelect={() => nav.toast(t('item.playSoon'))}>
+            <FocusButton className="primary" onSelect={() => upNext && playback.play(upNext)}>
               {play}
             </FocusButton>
             <FocusButton onSelect={() => nav.toggleWatched(show)}>

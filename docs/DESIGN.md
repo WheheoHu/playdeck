@@ -76,16 +76,14 @@ flowchart LR
 - There are two full-screen toplevel windows, and only one is visible at a time. The Electron window shows browsing and settings in SDR. During playback, the Electron window is hidden and the mpv window is shown, in HDR when the content is HDR.
 - **Core logic lives in the web layer**: the Plex API, application state and the playback controller. This keeps it independent of the host, so that Path B (section 13) can replace Electron with a native host without rewriting it.
 - **The host bridge is deliberately thin.** It handles the mpv process and IPC, configuration files, display information, gamescope X properties and window visibility.
-- During playback, mpv handles all input itself. The UI generates mpv's `input.conf` and script options from the user's key-mapping settings.
+- During playback, mpv handles all input itself; the host only forwards the gamepad to it (section 7.1). The UI generates mpv's `input.conf` from the user's key-mapping settings.
 
 ### 3.2 Host bridge surface (draft)
 
 | Area | Operations |
 |---|---|
-| Player | `start(url, startTime, tracks, options)`, `command(...)`, `setProperty(...)`, `stop()`; events: `time-pos`, `pause`, `track-list`, `eof`, `error`, `exit` |
-| Window | `hide()`, `show()`; window size and scale factor |
-| Display | native mode from the EDID (`GAMESCOPE_DISPLAY_EDID_PATH`), HDR output state (`GAMESCOPE_HDR_OUTPUT_FEEDBACK`); connector, internal/external, HDR/VRR flags and valid refresh rates from `gamescope_control.active_display_info` |
-| Refresh | `setRefresh(contentFps)` and `restoreRefresh()` through `gamescope_control.set_app_target_refresh_cycle` on gamescope's Wayland socket |
+| Player (version 2) | `start(session, options)`, `next(session)`, `stop()`; events: `playing`, `progress`, `tracks`, `next`, `ended`. Around playback the host itself hides and shows the UI window and sets the refresh rate through `gamescope_control.set_app_target_refresh_cycle` on gamescope's Wayland socket (section 3.3). |
+| Display (M5) | native mode from the EDID (`GAMESCOPE_DISPLAY_EDID_PATH`), HDR output state (`GAMESCOPE_HDR_OUTPUT_FEEDBACK`); connector, internal/external, HDR/VRR flags and valid refresh rates from `gamescope_control.active_display_info`; window size and scale factor |
 | Config | read and write the settings file; path of the user `mpv.conf` override |
 | System | open URLs and QR codes, app paths, log access |
 
@@ -93,13 +91,20 @@ The bridge interface is versioned and documented so that it can be re-implemente
 
 ### 3.3 Playback handoff
 
-1. The UI resolves the Direct Play URL (`{connection}{part.key}?X-Plex-Token=…`), the resume offset, the selected audio and subtitle streams, the markers and the frame rate.
-2. The host spawns mpv paused on the first frame:
-   - full screen, with `--input-ipc-server`, the PlayDeck OSD script, and the generated config;
+1. The UI builds a play session:
+   - the Direct Play URL (`{connection}{part.key}`) and the Plex headers that go with it, token included;
+   - the resume offset;
+   - the audio and subtitle streams, with the selected ones and the sidecar subtitle URLs;
+   - the markers, the frame rate and the next episode;
+   - the OSD's text in the UI language.
+2. The host writes the session to a file that only the user can read, then spawns mpv idle and paused:
+   - full screen, with `--input-ipc-server`, the PlayDeck OSD script, and the generated `input.conf`;
    - then the user's `mpv.conf` override, which is included last.
-3. The host hides the Electron window once mpv reports `vo-configured`. gamescope then focuses the mpv window (verified in S1).
+
+   The OSD script reads and deletes the file, sets the headers and loads the URL paused, so the token is never on a command line or in a log.
+3. Once the file has loaded and its first frame is up, the host waits for `vo-configured` and hides the Electron window. gamescope then focuses the mpv window (verified in S1).
 4. The host applies the refresh-rate policy (section 5.3) while mpv is still paused, waits for the mode switch to settle, and then unpauses.
-5. The UI drives mpv over IPC and reports progress to Plex (section 6.4).
+5. The host passes mpv's position to the UI, which reports it to Plex (section 6.4). The OSD script handles input itself. It tells the host, through script messages, when a track is chosen and when the next episode should play.
 6. When mpv exits, the host restores the refresh rate and shows the Electron window again.
 
 Refresh changes are kept outside active playback because each mode switch costs about 0.6 s and drops frames (S4).
@@ -148,6 +153,7 @@ At startup and on display changes, PlayDeck compares its window size with the na
   - The Deck OLED panel's valid rates are 45–90 Hz with gaps, which gives 23.976/24p → 72 Hz, 25p → 50 Hz, 29.97/30p → 90 Hz, 50p → 50 Hz and 59.94/60p → 60 Hz. The host computes the same answer from `active_display_info` so that it can tell mpv.
   - mpv must be told the new rate with `display-fps-override`, because Xwayland's RandR mode keeps reporting the native rate after a dynamic switch.
   - Writing the `GAMESCOPE_DYNAMIC_REFRESH` root property has no effect: gamescope recomputes it every frame from the app target refresh cycle.
+  - gamescope changes the mode only on a frame drawn a while after the target changed, and an idle page draws no frames. When playback ends, the UI runs a faint 1.5 s opacity animation, and the panel is back at 90 Hz about 1 s after mpv exits. Without it, the panel stayed at 72 Hz until the next focus move.
   - Automatic switching can be turned off in settings.
 - **External displays:** no mode switch. mpv uses `video-sync=display-resample`.
 
@@ -188,7 +194,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 
 ### 7.1 Sources
 
-- **Primary:** the Steam Input virtual gamepad, read through SDL in mpv and through the Gamepad API in Chromium.
+- **Primary:** the Steam Input virtual gamepad. Chromium reads it through the Gamepad API. During playback, the host reads the same device from evdev and sends the presses to mpv as key events over IPC, because Flathub mpv is built without SDL gamepad support.
 - **Keyboard-style remotes:** Flirc, Bluetooth remotes and keyboards (arrows, Enter, Esc/Backspace, media keys).
 - **Touch and mouse:** must work, but are not optimized.
 - **Reserved:** the Steam and QAM buttons belong to the system.
@@ -217,16 +223,19 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 
 | Input | Action |
 |---|---|
-| A | Show or hide the OSD (title, progress bar with chapter ticks, time). Auto-hides after 4 s. When a skip prompt is visible, activates it. |
-| D-pad left / right | Seek −10 s / +10 s; holding accelerates |
-| LB / RB | Previous / next chapter |
+| A | Pause or resume, and show the OSD. In a menu, select. When the next-episode card or a skip prompt is visible, activate it. |
+| D-pad left / right | Seek −10 s / +10 s. Holding repeats, in 30 s steps after 6 repeats and 60 s steps after 16. The bar moves at once, and the seek happens when it has rested for 0.3 s. |
+| D-pad up / down | Show the OSD; move in menus |
+| LB / RB | Previous / next chapter, or "No chapters" |
 | Y | Audio and subtitle track menu |
-| X | Stats overlay (HDR/DV state, codec, bitrate, dropped frames) |
-| Menu (☰) | Playback menu (speed, audio delay, subtitle size) |
-| B | Hide the OSD. If the OSD is already hidden, ask "Stop playback?" |
+| X | Stats overlay (mpv's stats page: HDR/DV state, codec, bitrate, dropped frames) |
+| Menu (☰) | Playback menu: speed, audio delay, subtitle delay, subtitle size. A resets the row. |
+| B | The first that applies: close the menu, cancel the next-episode card, hide the OSD, dismiss the skip prompt. Otherwise ask "Stop playback?" |
 
-- **Skip intro / credits:** a button is shown while playback is inside a Plex marker.
-- **Next episode:** near the end, a "Next episode in 10 s" card appears. A plays it now; B cancels.
+- **OSD:** the title, a progress bar with buffered ranges, chapter ticks and markers, the time, the time left and when it ends, and a clock. It auto-hides after 4 s. The button hints run along the bottom, like the UI's hints bar.
+- **Skip intro / credits:** a prompt is shown while playback is inside a Plex marker.
+- **Next episode:** at the last credits marker, or 10 s before the end without one, a "Next episode in 10 s" card appears. A plays it now; B cancels. With autoplay off, the card has no countdown and waits.
+- Keyboards and remotes get the same actions: arrows, Enter/Space, Esc/Backspace, Page Up/Down, Tab (tracks), `i` (stats), `m` (menu), `q` (stop), and the media keys.
 - The OSD is written for gamepads from scratch; uosc is mouse-oriented.
 
 ## 8. UI
@@ -311,7 +320,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | M0 Spikes | S1–S5 (section 14). If S1, S2 or S3 fails, re-evaluate the architecture. If S5 fails after tuning, switch the UI to Qt/QML. |
 | M1 Skeleton | Electron app, host bridge, settings storage, i18n, focus navigation framework; PIN sign-in, multi-server discovery and connection selection, Plex Home switching |
 | M2 Browse | Merged home, library grids, detail pages, cross-server search; performance harness passing |
-| M3 Playback | mpv handoff, resume, timeline and scrobble, track mapping, subtitles, HDR policy, refresh switching, resolution guard, Lua OSD, markers, next episode |
+| M3 Playback | mpv handoff, resume, timeline and scrobble, track mapping, subtitles, HDR policy, refresh switching, Lua OSD, markers, next episode |
 | M4 Packaging | Flatpak with bundled media stack, GitHub Actions, Add-to-Steam helper, Steam Input layout, documentation |
 | M5 External displays | TV layout, resolution guard, external refresh behavior; S3 external and S5 external tests |
 
@@ -442,6 +451,69 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - `perf.py --cold` clears the HTTP cache first, so every poster and still loads during the run. Keys repeat every 90 ms, like a held D-pad.
   - The script now also covers the Libraries tab, the show page's episode strip and a season switch.
   - Result on the Deck: rAF p95 11.2 ms with 1 drop in 2,916 frames. gamescope measured p95 11.11 ms with 7 single-vsync misses in 1,182 presents (0.6%).
+
+### 13.4 M3 implementation notes
+
+- **Layout.**
+  - `electron/player.ts` runs mpv, with `mpvIpc.ts` (JSON IPC), `gamescope.ts` (`gamescope_control`) and `gamepad.ts` (evdev).
+  - `mpv/playdeck.lua` is the OSD.
+  - `src/core/playback.ts` builds sessions and key bindings, `core/plex/playback.ts` makes the Plex calls, and `core/timeline.ts` paces timeline reports.
+  - `src/ui/playback.tsx` runs sessions for the screens.
+  - Bridge version 2 adds `player` (section 3.2).
+- **mpv.**
+  - Flathub `io.mpv.Mpv` until M4 bundles the media stack.
+  - It runs with `--no-config` and PlayDeck's options: `vo=gpu-next`, `gpu-api=vulkan`, `target-colorspace-hint`, `hwdec=vaapi` (a setting), `video-sync=display-resample`, a 400 MiB cache, no built-in bindings or OSC, and no automatic external files.
+  - The OSD and subtitles use Noto Sans CJK SC.
+- **Token.**
+  - The token travels only as an HTTP header, in the session file (section 3.3). The file lives in a run directory that mpv's sandbox can read.
+  - `--log-file` is not used, because it always logs at `-v`, which prints the headers. Development builds collect mpv's output at `all=info,vo=v` in `logs/mpv.log` instead.
+- **Input during playback.**
+  - The host reads Steam's virtual pad from `/dev/input/event*` (the joystick devices in `/proc/bus/input/devices`) only while mpv has the screen, and sends `keydown`/`keyup` with mpv's `GAMEPAD_*` names. A hidden Chromium window stops polling the pad, so the UI never acts on the same press.
+  - Each device is read by a `cat` child process. Node's fs reads on a character device block a libuv thread, and kept Electron from exiting.
+  - The generated `input.conf` binds those names, keys, remote media keys and mouse buttons to the script's bindings. Holds and repeats run on the script's own timers.
+  - Deviation from the first 7.3 draft: A pauses as well as showing the OSD, so a single button controls playback.
+  - For 300 ms after the UI window comes back, buttons that are already held do nothing, so the press that stopped playback does not also act on the page.
+- **OSD drawing.**
+  - ASS overlays use an 800-line virtual height, and their width follows the window's aspect. Text is measured with a hidden overlay (`compute_bounds`).
+  - libass sizes Noto Sans CJK by its line height, so font sizes are multiplied by 1.448 to match the UI's pixel sizes.
+- **Tracks.**
+  - A Plex stream's `index` is mpv's `ff-index`; failing that, tracks are matched by their order within their kind.
+  - Playback starts with the streams Plex marks selected. Audio falls back to the default track, then the first.
+  - Sidecar subtitles are added with `sub-add` from `{connection}{stream.key}`, using the session's headers. Subtitles stay off until the file arrives, so mpv's default embedded track does not flash first; if the file fails, the previous track comes back.
+  - A choice in the track menu is saved with `PUT /library/parts/{id}` (`allParts=1`). Subtitle 0 means off.
+- **Timeline and watched state.**
+  - `/:/timeline` is reported on every play, pause and stop, and every 10 s while playing.
+  - On exit, if playback reached the end or passed 90 %, or the viewer moved on to the next episode, PlayDeck reports `stopped` at the full duration and scrobbles. Otherwise it reports `stopped` at the position.
+  - The UI waits for that report before refreshing its caches, so the resume label is up to date when the page comes back.
+  - Plex keeps no offset for very short views: a 30 s view was not kept, a 75 s one was.
+- **Markers.**
+  - Intro and credits markers come from `includeMarkers=1`.
+  - A skip prompt shows while playback is inside a marker. Auto-skip skips each marker once and says so.
+  - When there is a next episode, the last credits marker brings up the next-episode card instead of a skip prompt.
+- **Next episode.**
+  - It is the episode after the current one in the show's `allLeaves`. Specials are skipped unless the current episode is one.
+  - When the next episode starts, the current one is scrobbled. The next one loads in the same mpv through `script-message load` with a new session file, starts from the beginning and keeps the refresh rate.
+  - If it has not loaded within 30 s, mpv quits.
+- **UI.**
+  - Play or Resume is on detail pages and episode cards. "Play from beginning" is a button next to Resume and an entry in the X menu.
+  - While mpv starts, an overlay shows the title and a spinner, and B cancels.
+  - Errors come back as toasts; nothing is retried by transcoding.
+  - Settings → Playback has autoplay next, auto-skip markers, refresh switching and hardware decoding.
+- **Results on the Deck** (remote HTTPS connection to the server).
+  - **Startup:** the first frame shows 2–10 s after A, depending on the server.
+  - **SDR:** 1080p HEVC at 23.976 fps. mpv used VA-API, `display-fps-override` was 72 and gamescope reported 72 Hz; the output stayed SDR (BT.709/BT.1886).
+  - **HDR:** 4K Dolby Vision P8.1 at 24.5 Mbps.
+    - mpv decoded with VA-API and output PQ/BT.2020 at a 1000-nit target, with MaxCLL 1230 from the stream. gamescope's HDR output was on, at 72 Hz.
+    - mpv dropped 13 frames in the first second and none afterwards. The cache stayed 27 s ahead.
+  - **Controls:**
+    - Seeking, chapters, skip intro, the track menu (an embedded track, then a Plex sidecar Chinese SRT) and the playback menu all worked.
+    - The resume offset, the scrobble at the credits and the next-episode card with its countdown all matched Plex.
+    - The stop prompt worked.
+  - **After exit:** the UI came back at 90 Hz, with its resume label up to date.
+- **Deferred.**
+  - The resolution guard and external displays move to M5.
+  - Still to come from section 9: default audio and subtitle languages, subtitle style, HDR subtitle and OSD brightness, and key mapping.
+  - In M3, DV P5, HDR10 and HDR10+ were tested only through spike S2 (section 14.1). The DV P8.1 file above is the only HDR file tested in M3.
 
 M0–M3 running on the Deck in dev mode is the MVP. Release 0.1 is the MVP plus M4. M5 follows when a suitable 4K HDR display is available for testing; until then, tests that need an external display are skipped.
 

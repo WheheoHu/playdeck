@@ -3,17 +3,20 @@ import type { MediaItem } from '../../core/plex/library';
 import { useApp } from '../AppContext';
 import { FocusButton } from '../focus/react';
 import { isWatched, useNav } from '../nav';
+import { usePlayback } from '../playback';
 
 export function ItemActions({ item, autoFocus }: { item: MediaItem; autoFocus?: boolean }) {
   const { t } = useApp();
   const nav = useNav();
+  const playback = usePlayback();
   const resume = item.viewOffset ? formatDuration(item.viewOffset) : undefined;
 
   return (
     <div className="item-actions">
-      <FocusButton className="primary" autoFocus={autoFocus} onSelect={() => nav.toast(t('item.playSoon'))}>
+      <FocusButton className="primary" autoFocus={autoFocus} onSelect={() => playback.play(item)}>
         {resume ? t('item.resume', { time: resume }) : t('item.play')}
       </FocusButton>
+      {resume && <FocusButton onSelect={() => playback.play(item, { fromStart: true })}>{t('item.playFromStart')}</FocusButton>}
       <FocusButton onSelect={() => nav.toggleWatched(item)}>
         {t(isWatched(item) ? 'item.markUnwatched' : 'item.markWatched')}
       </FocusButton>

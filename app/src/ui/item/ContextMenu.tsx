@@ -2,6 +2,7 @@ import type { MediaItem } from '../../core/plex/library';
 import { useApp } from '../AppContext';
 import { FocusButton, FocusScope } from '../focus/react';
 import { type Route, isWatched, routeFor, useNav } from '../nav';
+import { usePlayback } from '../playback';
 
 const MENU_HINTS = { b: 'hint.close' };
 
@@ -9,6 +10,8 @@ const MENU_HINTS = { b: 'hint.close' };
 export function ContextMenu({ item, here, onClose }: { item: MediaItem; here?: Route; onClose: () => void }) {
   const { t } = useApp();
   const nav = useNav();
+  const playback = usePlayback();
+  const playable = item.type === 'movie' || item.type === 'episode';
   const run = (action: () => void) => () => {
     onClose();
     action();
@@ -27,6 +30,9 @@ export function ContextMenu({ item, here, onClose }: { item: MediaItem; here?: R
             {t(item.type === 'episode' || item.type === 'season' ? 'item.goToShow' : 'item.open')}
           </FocusButton>
         )}
+        {playable && item.viewOffset ? (
+          <FocusButton onSelect={run(() => playback.play(item, { fromStart: true }))}>{t('item.playFromStart')}</FocusButton>
+        ) : null}
         <FocusButton autoFocus={isHere} onSelect={run(() => nav.toggleWatched(item))}>
           {t(isWatched(item) ? 'item.markUnwatched' : 'item.markWatched')}
         </FocusButton>

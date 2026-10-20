@@ -1,8 +1,10 @@
 import { type BrowserWindow, contentTracing } from 'electron';
 import { promises as fs } from 'node:fs';
 import net from 'node:net';
+import type { Player } from './player';
 
 type Command =
+  | { cmd: 'mpv'; args: unknown[] }
   | { cmd: 'key'; key: string }
   | { cmd: 'keys'; keys: string[]; intervalMs: number }
   | { cmd: 'capture'; path: string }
@@ -30,11 +32,14 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Development-only control socket, enabled by PLAYDECK_DEV_CONTROL=<socket path>. It lets a developer
  * drive the UI and take screenshots over SSH while the app runs in Gaming Mode. Newline-delimited JSON.
  */
-export async function startDevControl(socketPath: string, win: BrowserWindow): Promise<void> {
+export async function startDevControl(socketPath: string, win: BrowserWindow, player: Player): Promise<void> {
   await fs.rm(socketPath, { force: true });
 
   async function handle(command: Command): Promise<unknown> {
     switch (command.cmd) {
+      case 'mpv':
+        // While mpv has the screen: keypresses, screenshots and properties.
+        return player.command(command.args);
       case 'key':
         win.webContents.sendInputEvent({ type: 'keyDown', keyCode: command.key });
         win.webContents.sendInputEvent({ type: 'keyUp', keyCode: command.key });

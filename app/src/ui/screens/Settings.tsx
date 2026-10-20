@@ -1,5 +1,5 @@
 import type { LanguageSetting } from '../../../shared/bridge';
-import { LOCALES } from '../../core/i18n';
+import { LOCALES, type MessageKey } from '../../core/i18n';
 import { libraryId } from '../../core/plex/library';
 import type { Session } from '../../core/session';
 import { useApp } from '../AppContext';
@@ -47,6 +47,36 @@ function HomeLibraries() {
   );
 }
 
+type PlaybackSetting = 'refreshSwitching' | 'hardwareDecoding' | 'autoSkipMarkers' | 'autoplayNext';
+
+const PLAYBACK_SETTINGS: [PlaybackSetting, MessageKey][] = [
+  ['autoplayNext', 'settings.autoplayNext'],
+  ['autoSkipMarkers', 'settings.autoSkipMarkers'],
+  ['refreshSwitching', 'settings.refreshSwitching'],
+  ['hardwareDecoding', 'settings.hardwareDecoding'],
+];
+
+function PlaybackSettings() {
+  const { settings, updateSettings, t } = useApp();
+  return (
+    <>
+      <h3>{t('settings.playback')}</h3>
+      <div className="option-row">
+        {PLAYBACK_SETTINGS.map(([key, label]) => (
+          <FocusButton
+            key={key}
+            className={settings[key] ? 'option toggle on' : 'option toggle'}
+            onSelect={() => updateSettings({ [key]: !settings[key] })}
+          >
+            <span className="toggle-mark">{settings[key] ? '✓' : ''}</span>
+            {t(label)}
+          </FocusButton>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: SettingsProps) {
   const { settings, updateSettings, t } = useApp();
   const languages: [LanguageSetting, string][] = [
@@ -74,6 +104,8 @@ export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: S
               </FocusButton>
             ))}
           </div>
+
+          <PlaybackSettings />
 
           <HomeLibraries />
 

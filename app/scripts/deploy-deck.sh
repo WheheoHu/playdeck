@@ -5,7 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 npm run build
-rsync -a --delete --exclude '*.map' dist dist-electron package.json steamdeck:playdeck-dev/app/
+rsync -a --delete --exclude '*.map' dist dist-electron mpv package.json steamdeck:playdeck-dev/app/
 rsync -a deck/ steamdeck:playdeck-dev/app/
 ssh steamdeck 'chmod +x ~/playdeck-dev/app/*.sh ~/playdeck-dev/app/devctl.py && ln -sfn app ~/playdeck-dev/current'
 

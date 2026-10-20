@@ -59,6 +59,8 @@ const SCROLL_REPEAT_MS = 300;
 const WHEEL_STEP = 50;
 /** One trackpad swipe sends a burst of wheel events; it turns one page. */
 const WHEEL_COOLDOWN_MS = 250;
+/** After the window shows, the pad's state can lag a few frames behind. */
+const PRIME_MS = 300;
 
 function stickActions(pad: Gamepad): Action[] {
   const [x = 0, y = 0, , rightY = 0] = pad.axes;
@@ -98,6 +100,16 @@ export function listenForActions(onAction: (action: Action) => void): () => void
   window.addEventListener('wheel', onWheel, { passive: true });
 
   const nextRepeat = new Map<Action, number>();
+  // Buttons already down when the window shows (the press that stopped playback in mpv, or launched
+  // the app) act only after they are released.
+  let primeUntil = -Infinity;
+  const prime = () => {
+    if (document.visibilityState === 'visible') primeUntil = performance.now() + PRIME_MS;
+  };
+  prime();
+  document.addEventListener('visibilitychange', prime);
+  window.addEventListener('focus', prime);
+
   let frame = 0;
   const poll = (now: number) => {
     const held = new Set<Action>();
@@ -108,7 +120,9 @@ export function listenForActions(onAction: (action: Action) => void): () => void
     }
     for (const action of held) {
       const due = nextRepeat.get(action);
-      if (due === undefined) {
+      if (due === undefined && now < primeUntil) {
+        nextRepeat.set(action, Infinity);
+      } else if (due === undefined) {
         onAction(action);
         nextRepeat.set(action, REPEATING.has(action) ? now + REPEAT_DELAY_MS : Infinity);
       } else if (now >= due) {
@@ -124,6 +138,8 @@ export function listenForActions(onAction: (action: Action) => void): () => void
   return () => {
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('wheel', onWheel);
+    document.removeEventListener('visibilitychange', prime);
+    window.removeEventListener('focus', prime);
     cancelAnimationFrame(frame);
   };
 }

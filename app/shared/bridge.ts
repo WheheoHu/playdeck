@@ -4,7 +4,7 @@
  * Electron's main process implements it today; a native host may replace Electron later (Path B), so
  * everything the UI needs from the system goes through this interface and nothing else.
  */
-export const BRIDGE_VERSION = 1;
+export const BRIDGE_VERSION = 2;
 
 export type LanguageSetting = 'system' | 'en' | 'zh-CN';
 
@@ -22,6 +22,12 @@ export interface Settings {
   homeHiddenLibraries: string[];
   /** Grid order per library, keyed like homeHiddenLibraries. */
   librarySort: Record<string, LibrarySort>;
+  /** On the internal panel, run at a multiple of the video's frame rate during playback. */
+  refreshSwitching: boolean;
+  hardwareDecoding: boolean;
+  /** Skip intro and credits markers without asking. */
+  autoSkipMarkers: boolean;
+  autoplayNext: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -29,6 +35,10 @@ export const DEFAULT_SETTINGS: Settings = {
   manualServers: [],
   homeHiddenLibraries: [],
   librarySort: {},
+  refreshSwitching: true,
+  hardwareDecoding: true,
+  autoSkipMarkers: false,
+  autoplayNext: true,
 };
 
 export interface PlexAccount {
@@ -111,6 +121,79 @@ export interface AppInfo {
   locale: string;
 }
 
+/** An audio or subtitle track as the OSD offers it; `id` is the Plex stream ID. */
+export interface SessionTrack {
+  id: number;
+  kind: 'audio' | 'subtitle';
+  title: string;
+  language?: string;
+  /** The stream's index in the container, which mpv reports as `ff-index`. Absent for sidecar files. */
+  ffIndex?: number;
+  /** A sidecar subtitle file, fetched with the session's headers. */
+  url?: string;
+  selected: boolean;
+}
+
+/** Seconds into the video. */
+export interface SessionMarker {
+  kind: 'intro' | 'credits';
+  start: number;
+  end: number;
+}
+
+/**
+ * One video for mpv, built by the web layer. The host hands it to the PlayDeck mpv script in a file
+ * that only the user can read, so the token in `httpHeaders` never appears on a command line.
+ */
+export interface PlaySession {
+  /** Direct Play URL, without credentials. */
+  url: string;
+  httpHeaders: string[];
+  /** Seconds. */
+  start: number;
+  title: string;
+  /** A second line, e.g. "S1 · E4 · Pilot". */
+  subtitle?: string;
+  /** The server's frame rate, used until mpv reports the container's. */
+  frameRate?: number;
+  tracks: SessionTrack[];
+  markers: SessionMarker[];
+  /** The episode that follows, for the "next episode" card. */
+  next?: { title: string; subtitle?: string };
+  autoSkipMarkers: boolean;
+  autoplayNext: boolean;
+  /** OSD text in the UI language; `{n}` and `{time}` are filled in by the script. */
+  strings: Record<string, string>;
+}
+
+export interface PlayerOptions {
+  hardwareDecoding: boolean;
+  refreshSwitching: boolean;
+  /** mpv key bindings, generated from the key mapping. */
+  inputConf: string;
+}
+
+export type PlayerEvent =
+  /** The first frame is on screen and the UI window is hidden. */
+  | { type: 'playing' }
+  /** At most once a second while playing, and on every pause, resume and seek. Seconds. */
+  | { type: 'progress'; position: number; duration: number; paused: boolean }
+  /** The viewer picked a track in the OSD: Plex stream IDs, subtitle 0 for off, absent if unchanged. */
+  | { type: 'tracks'; audio?: number; subtitle?: number }
+  /** The OSD wants the next episode, because the viewer asked or the countdown ran out. */
+  | { type: 'next' }
+  /** mpv exited and the UI window is back. */
+  | { type: 'ended'; position: number; duration: number; reachedEnd: boolean; error?: string };
+
+export interface PlayerBridge {
+  /** Starts mpv on a session. Resolves once mpv runs; progress arrives as events. */
+  start(session: PlaySession, options: PlayerOptions): Promise<void>;
+  /** Replaces the video in the running mpv, e.g. with the next episode. */
+  next(session: PlaySession): Promise<void>;
+  stop(): void;
+  onEvent(listener: (event: PlayerEvent) => void): () => void;
+}
+
 export interface PlayDeckBridge {
   readonly version: number;
   getAppInfo(): Promise<AppInfo>;
@@ -121,6 +204,7 @@ export interface PlayDeckBridge {
   readCache(): Promise<AppCache>;
   writeCache(cache: AppCache): Promise<void>;
   quit(): void;
+  player: PlayerBridge;
 }
 
 export const CHANNELS = {
@@ -132,4 +216,8 @@ export const CHANNELS = {
   readCache: 'playdeck:cache:read',
   writeCache: 'playdeck:cache:write',
   quit: 'playdeck:quit',
+  playerStart: 'playdeck:player:start',
+  playerNext: 'playdeck:player:next',
+  playerStop: 'playdeck:player:stop',
+  playerEvent: 'playdeck:player:event',
 } as const;

@@ -7,15 +7,19 @@ import {
   type AppCache,
   type AppInfo,
   type Credentials,
+  type PlayerOptions,
+  type PlaySession,
   type Settings,
   CHANNELS,
   DEFAULT_CACHE,
   DEFAULT_SETTINGS,
 } from '../shared/bridge';
 import { startDevControl } from './devControl';
+import { Player } from './player';
 import { JsonFile, loadClientIdentifier } from './storage';
 
 const RENDERER_DIR = path.join(__dirname, '..', 'dist');
+const MPV_SCRIPT = path.join(__dirname, '..', 'mpv', 'playdeck.lua');
 const SCHEME = 'playdeck';
 const IN_GAMESCOPE = Boolean(process.env.GAMESCOPE_WAYLAND_DISPLAY);
 
@@ -67,6 +71,25 @@ async function registerBridge(): Promise<void> {
   ipcMain.on(CHANNELS.quit, () => app.quit());
 }
 
+/**
+ * mpv runs in its own Flatpak sandbox, which can write /tmp and the development directory but not
+ * PlayDeck's config directory, so the socket and session files live there.
+ */
+function createPlayer(win: BrowserWindow): Player {
+  const devRoot = process.env.PLAYDECK_DEV_ROOT;
+  const player = new Player(win, {
+    script: MPV_SCRIPT,
+    runDir: devRoot ? path.join(devRoot, 'run') : path.join(os.tmpdir(), `playdeck-${os.userInfo().uid}`),
+    logDir: process.env.PLAYDECK_LOG_DIR,
+    userConf: path.join(app.getPath('userData'), 'mpv.conf'),
+  });
+  ipcMain.handle(CHANNELS.playerStart, (_event, session: PlaySession, options: PlayerOptions) => player.start(session, options));
+  ipcMain.handle(CHANNELS.playerNext, (_event, session: PlaySession) => player.next(session));
+  ipcMain.on(CHANNELS.playerStop, () => player.stop());
+  app.on('before-quit', () => player.dispose());
+  return player;
+}
+
 async function createWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 1280,
@@ -82,6 +105,12 @@ async function createWindow(): Promise<BrowserWindow> {
     },
   });
   win.once('ready-to-show', () => win.show());
+  // Development builds log to launch.log; the renderer's own console is otherwise out of reach.
+  if (process.env.PLAYDECK_LOG_DIR) {
+    win.webContents.on('console-message', (details) => {
+      if (details.level !== 'debug') console.log(`[renderer ${details.level}] ${details.message}`);
+    });
+  }
   await win.loadURL(`${SCHEME}://app/index.html`);
   return win;
 }
@@ -90,7 +119,8 @@ async function main(): Promise<void> {
   protocol.handle(SCHEME, serveRenderer);
   await registerBridge();
   const win = await createWindow();
-  if (process.env.PLAYDECK_DEV_CONTROL) await startDevControl(process.env.PLAYDECK_DEV_CONTROL, win);
+  const player = createPlayer(win);
+  if (process.env.PLAYDECK_DEV_CONTROL) await startDevControl(process.env.PLAYDECK_DEV_CONTROL, win, player);
 }
 
 if (!app.requestSingleInstanceLock()) {

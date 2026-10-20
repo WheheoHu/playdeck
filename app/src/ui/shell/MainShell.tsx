@@ -13,7 +13,7 @@ import { ItemPage } from '../item/ItemPage';
 import { LibrariesScreen } from '../library/LibrariesScreen';
 import { LibraryPage } from '../library/LibraryPage';
 import { type Nav, NavContext, type Route, type Tab, TABS, isWatched, routeFor } from '../nav';
-import { invalidate } from '../resource';
+import { PlaybackProvider, invalidateItems } from '../playback';
 import { SearchScreen } from '../search/SearchScreen';
 import { useServers } from '../servers';
 
@@ -98,7 +98,7 @@ export function MainShell({ session }: { session: Session }) {
       const watched = !isWatched(item);
       setWatched(plex, server, item.ratingKey, watched).then(
         () => {
-          for (const prefix of ['home:', `item:${item.serverId}:`, `children:${item.serverId}:`, 'search:']) invalidate(prefix);
+          invalidateItems(item.serverId);
           setToast(t(watched ? 'item.watchedDone' : 'item.unwatchedDone'));
         },
         (reason: unknown) => setToast(t('item.actionFailed', { message: String(reason) })),
@@ -142,25 +142,27 @@ export function MainShell({ session }: { session: Session }) {
 
   return (
     <NavContext.Provider value={nav}>
-      <FocusScope
-        className="shell"
-        onBack={onShellBack}
-        onAction={onShellAction}
-        hints={SHELL_HINTS}
-        hidden={stack.length > 0}
-      >
-        <TabBar tab={tab} onTab={setTab} session={session} />
-        <div className="tab-content">
-          {tab === 'home' && <HomeScreen />}
-          {tab === 'libraries' && <LibrariesScreen />}
-          {tab === 'search' && <SearchScreen />}
-        </div>
-      </FocusScope>
-      {stack.map((route, index) => (
-        <Page key={index} route={route} hidden={index < stack.length - 1} />
-      ))}
-      {menuItem && <ContextMenu item={menuItem} here={stack.at(-1)} onClose={() => setMenuItem(null)} />}
-      {quitting && <QuitPrompt onCancel={() => setQuitting(false)} />}
+      <PlaybackProvider>
+        <FocusScope
+          className="shell"
+          onBack={onShellBack}
+          onAction={onShellAction}
+          hints={SHELL_HINTS}
+          hidden={stack.length > 0}
+        >
+          <TabBar tab={tab} onTab={setTab} session={session} />
+          <div className="tab-content">
+            {tab === 'home' && <HomeScreen />}
+            {tab === 'libraries' && <LibrariesScreen />}
+            {tab === 'search' && <SearchScreen />}
+          </div>
+        </FocusScope>
+        {stack.map((route, index) => (
+          <Page key={index} route={route} hidden={index < stack.length - 1} />
+        ))}
+        {menuItem && <ContextMenu item={menuItem} here={stack.at(-1)} onClose={() => setMenuItem(null)} />}
+        {quitting && <QuitPrompt onCancel={() => setQuitting(false)} />}
+      </PlaybackProvider>
       {toast && <div className="toast">{toast}</div>}
     </NavContext.Provider>
   );

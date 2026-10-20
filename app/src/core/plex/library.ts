@@ -30,6 +30,12 @@ export interface MediaStream {
   title: string;
   /** The track's own name from the file, e.g. "Simplified" or "Commentary". */
   name?: string;
+  /** The stream's index in the container; absent for sidecar files. */
+  index?: number;
+  /** The track the server will play for this user: their last choice or their language preference. */
+  selected: boolean;
+  /** Path of a sidecar subtitle file on the server. */
+  key?: string;
   default: boolean;
   forced: boolean;
   external: boolean;
@@ -85,6 +91,13 @@ export interface MediaVersion {
   parts: MediaPart[];
 }
 
+/** Milliseconds, as the server reports them. */
+export interface Marker {
+  kind: 'intro' | 'credits';
+  start: number;
+  end: number;
+}
+
 export interface CastMember {
   name: string;
   role?: string;
@@ -130,6 +143,8 @@ export interface MediaItem {
   directors: string[];
   cast: CastMember[];
   media: MediaVersion[];
+  /** Only on full items (fetchItem). */
+  markers: Marker[];
 }
 
 export interface LibrarySection {
@@ -183,11 +198,14 @@ export interface RawMetadata {
   Director?: Tag[];
   Role?: Tag[];
   Media?: RawMedia[];
+  Marker?: { type?: string; startTimeOffset?: number; endTimeOffset?: number }[];
 }
 
 interface RawStream {
   id: number;
   streamType: number;
+  index?: number;
+  selected?: boolean;
   codec?: string;
   languageTag?: string;
   language?: string;
@@ -253,6 +271,9 @@ function parseStream(raw: RawStream): MediaStream | null {
     languageName: raw.language,
     title: raw.extendedDisplayTitle ?? raw.displayTitle ?? raw.codec ?? '',
     name: raw.title,
+    index: raw.key ? undefined : raw.index,
+    selected: Boolean(raw.selected),
+    key: raw.key,
     default: Boolean(raw.default),
     forced: Boolean(raw.forced),
     external: Boolean(raw.key),
@@ -348,6 +369,14 @@ export function parseItem(serverId: string, raw: RawMetadata): MediaItem {
     directors: tags(raw.Director),
     cast: (raw.Role ?? []).flatMap((role) => (role.tag ? [{ name: role.tag, role: role.role, thumb: role.thumb }] : [])),
     media: (raw.Media ?? []).map(parseMedia),
+    markers: (raw.Marker ?? []).flatMap((marker): Marker[] =>
+      (marker.type === 'intro' || marker.type === 'credits') &&
+      marker.startTimeOffset !== undefined &&
+      marker.endTimeOffset !== undefined &&
+      marker.endTimeOffset > marker.startTimeOffset
+        ? [{ kind: marker.type, start: marker.startTimeOffset, end: marker.endTimeOffset }]
+        : [],
+    ),
   };
 }
 

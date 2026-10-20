@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { BRIDGE_VERSION, CHANNELS, type PlayDeckBridge } from '../shared/bridge';
+import { BRIDGE_VERSION, CHANNELS, type PlayDeckBridge, type PlayerEvent } from '../shared/bridge';
 
 const bridge: PlayDeckBridge = {
   version: BRIDGE_VERSION,
@@ -11,6 +11,18 @@ const bridge: PlayDeckBridge = {
   readCache: () => ipcRenderer.invoke(CHANNELS.readCache),
   writeCache: (cache) => ipcRenderer.invoke(CHANNELS.writeCache, cache),
   quit: () => ipcRenderer.send(CHANNELS.quit),
+  player: {
+    start: (session, options) => ipcRenderer.invoke(CHANNELS.playerStart, session, options),
+    next: (session) => ipcRenderer.invoke(CHANNELS.playerNext, session),
+    stop: () => ipcRenderer.send(CHANNELS.playerStop),
+    onEvent: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, value: PlayerEvent) => listener(value);
+      ipcRenderer.on(CHANNELS.playerEvent, handler);
+      return () => {
+        ipcRenderer.removeListener(CHANNELS.playerEvent, handler);
+      };
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('playdeck', bridge);
