@@ -36,6 +36,11 @@ export const en = {
   'hint.sort': 'Sort',
   'hint.page': 'Page',
   'hint.delete': 'Delete',
+  'hint.scroll': 'Scroll',
+  'hint.cancel': 'Cancel',
+  'hint.quit': 'Quit',
+
+  'quit.title': 'Quit PlayDeck?',
 
   'home.continueWatching': 'Continue Watching',
   'home.recentMovies': 'Recently Added Movies',
@@ -79,11 +84,13 @@ export const en = {
   'info.video': 'Video',
   'info.audio': 'Audio',
   'info.subtitle': 'Subtitle',
+  'info.subtitles': 'Subtitles',
   'info.default': 'Default',
   'info.forced': 'Forced',
   'info.sdh': 'SDH',
   'info.external': 'External file',
   'info.language': 'Language',
+  'info.name': 'Name',
   'info.codec': 'Codec',
   'info.profile': 'Profile',
   'info.level': 'Level',
@@ -135,7 +142,6 @@ export const en = {
   'settings.language.system': 'System',
   'settings.switchUser': 'Switch user',
   'settings.signOut': 'Sign out',
-  'settings.close': 'Close',
   'settings.signedInAs': 'Signed in as {name}',
 } as const;
 

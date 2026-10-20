@@ -26,7 +26,10 @@ export interface MediaStream {
   language?: string;
   /** The server's display name for the language, e.g. "Japanese". */
   languageName?: string;
+  /** The server's composed label, e.g. "Simplified (Chinese ASS)". */
   title: string;
+  /** The track's own name from the file, e.g. "Simplified" or "Commentary". */
+  name?: string;
   default: boolean;
   forced: boolean;
   external: boolean;
@@ -188,6 +191,7 @@ interface RawStream {
   codec?: string;
   languageTag?: string;
   language?: string;
+  title?: string;
   displayTitle?: string;
   extendedDisplayTitle?: string;
   default?: boolean;
@@ -247,7 +251,9 @@ function parseStream(raw: RawStream): MediaStream | null {
     codec: raw.codec,
     language: raw.languageTag ?? raw.language,
     languageName: raw.language,
-    title: raw.extendedDisplayTitle ?? raw.displayTitle ?? raw.codec ?? '',    default: Boolean(raw.default),
+    title: raw.extendedDisplayTitle ?? raw.displayTitle ?? raw.codec ?? '',
+    name: raw.title,
+    default: Boolean(raw.default),
     forced: Boolean(raw.forced),
     external: Boolean(raw.key),
     hearingImpaired: Boolean(raw.hearingImpaired),

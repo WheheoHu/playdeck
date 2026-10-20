@@ -62,7 +62,8 @@ const EPISODE = parseItem('srv', {
               streamType: 3,
               codec: 'srt',
               language: 'English',
-              extendedDisplayTitle: 'English SDH (SRT External)',
+              title: 'SDH',
+              extendedDisplayTitle: 'SDH (English SRT External)',
               hearingImpaired: true,
               key: '/library/streams/4',
             },
@@ -116,6 +117,15 @@ describe('trackInfo', () => {
     });
     expect(tracks[3].flags).toEqual(['info.sdh', 'info.external']);
   });
+
+  it('titles a subtitle track by its language, with the name from the file among its facts', () => {
+    expect(tracks[3].title).toBe('English');
+    expect(tracks[3].facts).toEqual([
+      ['info.name', 'SDH'],
+      ['info.codec', 'SRT'],
+    ]);
+  });
+
   it('summarizes the file', () => {
     expect(versionSummary(EPISODE.media[0])).toEqual(['1080p', 'MKV', '2.80 GB', '47m', '8.5 Mbps']);
   });

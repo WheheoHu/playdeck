@@ -5,7 +5,7 @@ import type { FocusManager } from '../focus/manager';
 import { useFocusManager } from '../focus/react';
 
 /** Left to right, as in the SteamOS footer: confirm and back sit at the far right. */
-const BUTTONS = ['menu', 'lt-rt', 'y', 'x', 'a', 'b'] as const;
+const BUTTONS = ['menu', 'lt-rt', 'rs', 'y', 'x', 'a', 'b'] as const;
 export type HintButton = (typeof BUTTONS)[number];
 
 /** A controller button drawn like the SteamOS glyphs. */
@@ -19,6 +19,7 @@ export function Glyph({ button }: { button: HintButton | 'lb' | 'rb' }) {
     );
   }
   if (button === 'menu') return <span className="glyph glyph-pill">☰</span>;
+  if (button === 'rs') return <span className="glyph glyph-stick">R</span>;
   if (button === 'lb' || button === 'rb') return <span className="glyph glyph-pill">{button.toUpperCase()}</span>;
   return <span className="glyph glyph-face">{button.toUpperCase()}</span>;
 }

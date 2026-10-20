@@ -140,7 +140,8 @@ function facts(stream: MediaStream, t: Translate): [MessageKey, string][] {
       ['info.bitrate', formatBitrate(stream.bitrate)],
     );
   } else {
-    list.push(['info.codec', codec]);
+    // A subtitle track's title is its language, so its name in the file takes the language's place.
+    list.splice(0, 1, ['info.name', stream.name], ['info.codec', codec]);
   }
   return list.filter((fact): fact is [MessageKey, string] => Boolean(fact[1]));
 }
@@ -156,7 +157,11 @@ export function trackInfo(version: MediaVersion, t: Translate): TrackInfo[] {
       kind,
       index: i + 1,
       count: ofKind.length,
-      title: stream.title || codecName(stream.codec) || t(`info.${kind}`),
+      title:
+        (kind === 'subtitle' ? stream.languageName || stream.name : stream.title) ||
+        stream.title ||
+        codecName(stream.codec) ||
+        t(`info.${kind}`),
       flags: (
         [
           [stream.default, 'info.default'],

@@ -199,9 +199,9 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | Input | Action |
 |---|---|
 | D-pad / left stick | Move focus |
-| Right stick | Fast scroll |
+| Right stick / wheel | Scroll the focused card's content (the subtitle list) a page at a time |
 | A / Enter | Select |
-| B / Esc / Backspace | Back |
+| B / Esc / Backspace | Back. Twice on Home, ask "Quit PlayDeck?" |
 | X | Context menu (watched state, version); Delete on the search keyboard |
 | Y | Sort on a library page |
 | LB / RB | Switch top tabs (Home, Libraries, Search) |
@@ -209,6 +209,10 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | Menu (☰) | Settings |
 
 - A bar along the bottom of the screen shows, SteamOS style, the buttons that do something for the focused element and its screen. LB and RB glyphs flank the top tabs.
+- The top tabs never take focus; LB/RB (or a tap) switch them, and focus stays in the tab's content.
+- Dialogs and Settings have no Close button: B closes them, and the bar says so.
+- The double B on Home is left out of the bar. Quitting is not in Settings.
+
 ### 7.3 Playback OSD (mpv Lua, defaults, all remappable)
 
 | Input | Action |
@@ -398,6 +402,11 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - Row labels are 24 px.
   - Settings → "Libraries on Home" hides chosen libraries (`homeHiddenLibraries`, as `serverId/sectionKey`). Items are filtered by `librarySectionID` before the merge, so hidden libraries do not use up a row's length.
   - Y no longer opens Search; RB reaches it from the tabs.
+  - Rows show 7 posters of 154×231 with 18 px gaps, and the eighth peeks in at the right edge. Search results use the same rows.
+  - B twice within 700 ms asks "Quit PlayDeck?" (A quits, B cancels). This replaces Quit in Settings.
+- **Shell and dialogs.**
+  - The top tabs are plain labels, not focusables, so Up from the first row stays in the content.
+  - The context menu and Settings lost their Close buttons; B closes them.
 - **Libraries.**
   - Library tiles have 24 px names.
   - The grid has 6 columns of 168×252 posters, centered, with 17 px titles. Two full rows fit above the hints bar.
@@ -410,7 +419,8 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - LB/RB, shown on either side of the season tabs, switch seasons from anywhere on the page. The previous season stays on screen until the next one loads. Focus in the strip moves to the new season's next episode, and a focused season tab follows the selection.
 - **Media information** replaces the File info overlay, on movie and show pages.
   - The first screen is unchanged; the section's heading shows at the bottom edge, and Down scrolls the page to it.
-  - Each version has a summary line (resolution, container, size, duration, bit rate, file name) and a row of track cards: video, then audio, then subtitles, numbered within their kind. The row scrolls sideways when there are more than three.
+  - Each version has a summary line (resolution, container, size, duration, bit rate, file name) and a row of track cards: video, then audio, numbered within their kind, then one subtitle card. The row scrolls sideways when the cards do not fit.
+  - The subtitle card lists every subtitle track vertically, 7 rows to a page: the language as the title, then the track's own name from the file and the codec, plus tags. When focused, the right stick (or the wheel) pages through it; the header shows the visible range ("8–14 / 16"), the hints bar shows R Scroll, and a fade marks more below.
   - Cards list what the server reports: codec, profile, level, resolution, frame rate, bit rate, dynamic range (Dolby Vision profile, HDR10, HLG or SDR), bit depth, chroma and color details for video; channels, layout and sample rate for audio. Default, forced, SDH and external are tags.
   - On a show page the section follows the focused episode. Episode lists carry no tracks, so the full episode is fetched 300 ms after focus rests on it, and the previous one stays until it arrives.
   - The formatting is in `core/mediaInfo.ts`; Plex's level numbers are read per codec (H.264 41 is 4.1, HEVC 153 is 5.1, AV1 13 is 5.1).

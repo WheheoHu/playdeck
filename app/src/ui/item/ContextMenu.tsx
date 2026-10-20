@@ -30,7 +30,6 @@ export function ContextMenu({ item, here, onClose }: { item: MediaItem; here?: R
         <FocusButton autoFocus={isHere} onSelect={run(() => nav.toggleWatched(item))}>
           {t(isWatched(item) ? 'item.markUnwatched' : 'item.markWatched')}
         </FocusButton>
-        <FocusButton onSelect={onClose}>{t('settings.close')}</FocusButton>
       </div>
     </FocusScope>
   );

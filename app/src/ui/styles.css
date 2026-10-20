@@ -435,11 +435,14 @@ p {
 }
 
 .tab {
+  display: flex;
+  align-items: center;
   min-height: 40px;
   padding: 0 18px;
   border-radius: 20px;
-  background: transparent;
   color: var(--muted);
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .tab.active {
@@ -483,6 +486,17 @@ p {
   height: 22px;
   padding: 0 6px;
   border-radius: 6px;
+  font-size: 12px;
+}
+
+/* A stick: a filled cap inside a ring. */
+.glyph-stick {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 2px rgb(242 242 245 / 92%),
+    inset 0 0 0 4px rgb(11 11 15);
   font-size: 12px;
 }
 
@@ -667,8 +681,9 @@ p {
   will-change: transform;
 }
 
+/* ROW_H in layout.ts: label, poster, gap. */
 .row {
-  height: 286px;
+  height: 307px;
 }
 
 .row-label {
@@ -681,16 +696,16 @@ p {
 
 .track {
   display: flex;
-  gap: 16px;
+  gap: 18px;
   padding-left: 48px;
 }
 
-/* Cards */
+/* Cards: POSTER_W and POSTER_H in layout.ts. */
 .card {
   position: relative;
   flex: none;
-  width: 140px;
-  height: 210px;
+  width: 154px;
+  height: 231px;
   overflow: hidden;
   border-radius: 8px;
   background: #1b1b22;
@@ -1181,12 +1196,66 @@ p {
   gap: 6px;
 }
 
-.track-flags span {
+.track-flag {
+  flex: none;
   padding: 2px 8px;
   border: 1px solid rgb(242 242 245 / 22%);
   border-radius: 6px;
   color: rgb(242 242 245 / 85%);
   font-size: 12px;
+  font-weight: 400;
+}
+
+/* Fixed row heights, so a page is a whole number of rows (7). */
+.subtitle-viewport {
+  position: relative;
+  max-height: calc(7 * 62px);
+  overflow: hidden;
+}
+
+.subtitle-viewport.more-below {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+.subtitle-list {
+  position: relative;
+  transition: transform var(--focus-ms) var(--ease);
+  will-change: transform;
+}
+
+.subtitle-row {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  height: 62px;
+  border-top: 1px solid rgb(255 255 255 / 7%);
+  box-sizing: border-box;
+}
+
+.subtitle-row:first-child {
+  border-top: none;
+}
+
+.subtitle-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.subtitle-title > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle-meta {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .track-facts {

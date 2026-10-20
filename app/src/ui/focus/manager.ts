@@ -25,7 +25,7 @@ export interface Region {
 }
 
 /**
- * Button hints by button name (`a`, `b`, `x`, `y`, `lt-rt`, `menu`), each a message key or "" for none.
+ * Button hints by button name (`a`, `b`, `x`, `y`, `lt-rt`, `rs`, `menu`), each a message key or "" for none.
  * The focused element contributes through `data-hint-<button>` attributes on itself or an ancestor.
  */
 export type Hints = Partial<Record<string, string>>;

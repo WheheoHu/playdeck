@@ -38,6 +38,11 @@ export const zhCN: Messages = {
   'hint.sort': '排序',
   'hint.page': '翻页',
   'hint.delete': '删除',
+  'hint.scroll': '滚动',
+  'hint.cancel': '取消',
+  'hint.quit': '退出',
+
+  'quit.title': '退出 PlayDeck？',
 
   'home.continueWatching': '继续观看',
   'home.recentMovies': '最近添加的电影',
@@ -81,11 +86,13 @@ export const zhCN: Messages = {
   'info.video': '视频',
   'info.audio': '音频',
   'info.subtitle': '字幕',
+  'info.subtitles': '字幕',
   'info.default': '默认',
   'info.forced': '强制',
   'info.sdh': '听障',
   'info.external': '外挂',
   'info.language': '语言',
+  'info.name': '名称',
   'info.codec': '编码',
   'info.profile': '档次',
   'info.level': '级别',
@@ -137,6 +144,5 @@ export const zhCN: Messages = {
   'settings.language.system': '跟随系统',
   'settings.switchUser': '切换用户',
   'settings.signOut': '退出登录',
-  'settings.close': '关闭',
   'settings.signedInAs': '当前账号：{name}',
 };

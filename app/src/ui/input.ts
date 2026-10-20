@@ -9,6 +9,9 @@ export type Action =
   | 'next-tab'
   | 'page-up'
   | 'page-down'
+  /** Right stick or a scroll wheel: scrolls the focused element's own content. */
+  | 'scroll-up'
+  | 'scroll-down'
   | 'menu';
 
 // Defaults from docs/DESIGN.md, section 7.2.
@@ -46,20 +49,31 @@ const BUTTONS: [number, Action][] = [
   [14, 'left'],
   [15, 'right'],
 ];
-const REPEATING = new Set<Action>(['up', 'down', 'left', 'right', 'page-up', 'page-down']);
+const REPEATING = new Set<Action>(['up', 'down', 'left', 'right', 'page-up', 'page-down', 'scroll-up', 'scroll-down']);
 const STICK_THRESHOLD = 0.6;
 const REPEAT_DELAY_MS = 350;
 const REPEAT_INTERVAL_MS = 90;
+/** A scroll step turns a page, so a held stick turns them slower than the D-pad moves. */
+const SCROLL_REPEAT_MS = 300;
+/** Wheel travel per scroll step, in pixels; a mouse notch is about 50-120. */
+const WHEEL_STEP = 50;
+/** One trackpad swipe sends a burst of wheel events; it turns one page. */
+const WHEEL_COOLDOWN_MS = 250;
 
 function stickActions(pad: Gamepad): Action[] {
-  const [x = 0, y = 0] = pad.axes;
+  const [x = 0, y = 0, , rightY = 0] = pad.axes;
   const actions: Action[] = [];
   if (x < -STICK_THRESHOLD) actions.push('left');
   if (x > STICK_THRESHOLD) actions.push('right');
   if (y < -STICK_THRESHOLD) actions.push('up');
   if (y > STICK_THRESHOLD) actions.push('down');
+  if (rightY < -STICK_THRESHOLD) actions.push('scroll-up');
+  if (rightY > STICK_THRESHOLD) actions.push('scroll-down');
   return actions;
 }
+
+const repeatInterval = (action: Action) =>
+  action === 'scroll-up' || action === 'scroll-down' ? SCROLL_REPEAT_MS : REPEAT_INTERVAL_MS;
 
 /** Keyboard events plus polled gamepads with key-repeat for navigation. Returns a disposer. */
 export function listenForActions(onAction: (action: Action) => void): () => void {
@@ -70,6 +84,18 @@ export function listenForActions(onAction: (action: Action) => void): () => void
     onAction(action);
   };
   window.addEventListener('keydown', onKey);
+
+  let wheel = 0;
+  let wheelQuietUntil = 0;
+  const onWheel = (event: WheelEvent) => {
+    if (event.timeStamp < wheelQuietUntil) return;
+    wheel += event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * 40 : event.deltaY;
+    if (Math.abs(wheel) < WHEEL_STEP) return;
+    onAction(wheel > 0 ? 'scroll-down' : 'scroll-up');
+    wheel = 0;
+    wheelQuietUntil = event.timeStamp + WHEEL_COOLDOWN_MS;
+  };
+  window.addEventListener('wheel', onWheel, { passive: true });
 
   const nextRepeat = new Map<Action, number>();
   let frame = 0;
@@ -87,7 +113,7 @@ export function listenForActions(onAction: (action: Action) => void): () => void
         nextRepeat.set(action, REPEATING.has(action) ? now + REPEAT_DELAY_MS : Infinity);
       } else if (now >= due) {
         onAction(action);
-        nextRepeat.set(action, now + REPEAT_INTERVAL_MS);
+        nextRepeat.set(action, now + repeatInterval(action));
       }
     }
     for (const action of nextRepeat.keys()) if (!held.has(action)) nextRepeat.delete(action);
@@ -97,6 +123,7 @@ export function listenForActions(onAction: (action: Action) => void): () => void
 
   return () => {
     window.removeEventListener('keydown', onKey);
+    window.removeEventListener('wheel', onWheel);
     cancelAnimationFrame(frame);
   };
 }

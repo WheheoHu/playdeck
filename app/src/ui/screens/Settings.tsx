@@ -48,7 +48,7 @@ function HomeLibraries() {
 }
 
 export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: SettingsProps) {
-  const { settings, updateSettings, bridge, t } = useApp();
+  const { settings, updateSettings, t } = useApp();
   const languages: [LanguageSetting, string][] = [
     ['system', t('settings.language.system')],
     ...Object.entries(LOCALES).map(([locale, { name }]) => [locale as LanguageSetting, name] as [LanguageSetting, string]),
@@ -83,8 +83,6 @@ export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: S
           <div className="settings-actions">
             {session.homeUsers.length > 1 && <FocusButton onSelect={onSwitchUser}>{t('settings.switchUser')}</FocusButton>}
             <FocusButton onSelect={onSignOut}>{t('settings.signOut')}</FocusButton>
-            <FocusButton onSelect={() => bridge.quit()}>{t('app.quit')}</FocusButton>
-            <FocusButton onSelect={onClose}>{t('settings.close')}</FocusButton>
           </div>
         </div>
       </div>

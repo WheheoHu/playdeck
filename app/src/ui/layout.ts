@@ -2,9 +2,10 @@
 export const PAD_X = 48;
 export const TAB_BAR_H = 72;
 
-export const POSTER_W = 140;
-export const POSTER_H = 210;
-export const GAP = 16;
+/** Seven posters per row: 48 + 7 * 154 + 6 * 18 leaves 46 px on the right, and the eighth peeks in. */
+export const POSTER_W = 154;
+export const POSTER_H = 231;
+export const GAP = 18;
 export const STRIDE_X = POSTER_W + GAP;
 /** Scale of a focused card; the ring is sized for the scaled card. */
 export const FOCUS_SCALE = 1.06;
