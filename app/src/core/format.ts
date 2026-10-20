@@ -33,12 +33,20 @@ export function episodeLabel(item: MediaItem): string | undefined {
   return undefined;
 }
 
-function dynamicRange(video: MediaStream | undefined): string | undefined {
+/** The video's HDR format, or undefined for SDR. */
+export function dynamicRange(video: MediaStream | undefined): string | undefined {
   const title = video?.title ?? '';
-  if (/dovi|dolby vision/i.test(title) || video?.doviProfile) return /hdr10\+/i.test(title) ? 'Dolby Vision · HDR10+' : 'Dolby Vision';
+  if (/dovi|dolby vision/i.test(title) || video?.dolbyVision) return /hdr10\+/i.test(title) ? 'Dolby Vision · HDR10+' : 'Dolby Vision';
   if (/hdr10\+/i.test(title)) return 'HDR10+';
-  if (/\bhdr|hlg/i.test(title) || video?.colorTrc === 'smpte2084' || video?.colorTrc === 'arib-std-b67') return 'HDR10';
+  if (/\bhlg/i.test(title) || video?.colorTrc === 'arib-std-b67') return 'HLG';
+  if (/\bhdr/i.test(title) || video?.colorTrc === 'smpte2084') return 'HDR10';
   return undefined;
+}
+
+/** Plex's "4k", "1080", "sd" as "4K", "1080p", "SD". */
+export function resolutionLabel(resolution: string | undefined): string | undefined {
+  if (!resolution) return undefined;
+  return resolution === '4k' ? '4K' : /^\d+$/.test(resolution) ? `${resolution}p` : resolution.toUpperCase();
 }
 
 /** Badges like "4K", "Dolby Vision", "Atmos" for the item's first version. */
@@ -47,8 +55,8 @@ export function qualityBadges(item: MediaItem): string[] {
   if (!version) return [];
   const streams = version.parts.flatMap((part) => part.streams);
   const badges: string[] = [];
-  const resolution = version.videoResolution;
-  if (resolution) badges.push(resolution === '4k' ? '4K' : /^\d+$/.test(resolution) ? `${resolution}p` : resolution.toUpperCase());
+  const resolution = resolutionLabel(version.videoResolution);
+  if (resolution) badges.push(resolution);
   const range = dynamicRange(streams.find((stream) => stream.kind === 'video'));
   if (range) badges.push(range);
   if (streams.some((stream) => stream.kind === 'audio' && /atmos/i.test(stream.title))) badges.push('Atmos');

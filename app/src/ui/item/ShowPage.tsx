@@ -13,7 +13,7 @@ import {
 import { flushSync } from 'react-dom';
 import { episodeLabel, formatDuration } from '../../core/format';
 import { progressOf } from '../../core/home';
-import { type MediaItem, fetchChildren, imageUrl } from '../../core/plex/library';
+import { type MediaItem, fetchChildren, fetchItem, imageUrl } from '../../core/plex/library';
 import { useApp } from '../AppContext';
 import { Glyph } from '../components/Hints';
 import { ItemHeading } from '../components/ItemHeading';
@@ -25,6 +25,7 @@ import { PAD_X, focusedCardRect, imageScale } from '../layout';
 import { type Route, isWatched, useNav } from '../nav';
 import { useResource } from '../resource';
 import { useServers } from '../servers';
+import { MediaInfo } from './MediaInfo';
 
 const STILL_W = 288;
 const STILL_H = 162;
@@ -37,6 +38,8 @@ const STRIP_OVERSCAN = 3;
 /** Mirrors .strip-viewport padding: room for a focused card's scale-up. */
 const BLEED = 12;
 const INFO_DEBOUNCE_MS = 120;
+/** Longer than the info's: each settle fetches the episode. */
+const MEDIA_DEBOUNCE_MS = 300;
 
 type ItemRoute = Extract<Route, { kind: 'item' }>;
 
@@ -96,6 +99,40 @@ const EpisodeInfo = memo(
         {episode.summary && <p className="episode-info-summary">{episode.summary}</p>}
       </div>
     );
+  }),
+);
+
+/**
+ * The focused episode's media information below the fold. Episode lists carry no track details, so
+ * the full episode loads once focus has rested on it; the last one stays until the next arrives.
+ */
+const EpisodeMedia = memo(
+  forwardRef<InfoHandle>(function EpisodeMedia(_props, ref) {
+    const { plex } = useApp();
+    const { byId } = useServers();
+    const [episode, setEpisode] = useState<MediaItem | null>(null);
+    const timer = useRef(0);
+    useImperativeHandle(
+      ref,
+      () => ({
+        show(next) {
+          window.clearTimeout(timer.current);
+          timer.current = window.setTimeout(() => setEpisode(next), MEDIA_DEBOUNCE_MS);
+        },
+      }),
+      [],
+    );
+    useEffect(() => () => window.clearTimeout(timer.current), []);
+
+    const server = episode ? byId(episode.serverId) : undefined;
+    const full = useResource(server && episode ? `item:${episode.serverId}:${episode.ratingKey}` : null, () =>
+      fetchItem(plex, server!, episode!.ratingKey),
+    );
+    const last = useRef<MediaItem | undefined>(undefined);
+    if (full.data) last.current = full.data;
+    const shown = last.current;
+    const label = shown && [episodeLabel(shown), shown.title].filter(Boolean).join(' ');
+    return <MediaInfo item={shown} failed={!shown && Boolean(full.error)} label={label} />;
   }),
 );
 
@@ -248,6 +285,7 @@ export function ShowPage({ show, route, actions }: ShowPageProps) {
   const manager = useFocusManager();
   const server = byId(show.serverId);
   const info = useRef<InfoHandle>(null);
+  const media = useRef<InfoHandle>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const seasons = useResource(server ? `children:${show.serverId}:${show.ratingKey}` : null, () =>
     fetchChildren(plex, server!, show.ratingKey),
@@ -273,7 +311,10 @@ export function ShowPage({ show, route, actions }: ShowPageProps) {
       route.episode && shownSeason === route.season ? list.findIndex((e) => e.ratingKey === route.episode) : -1;
     return jump >= 0 ? jump : nextUp(list);
   }, [list, shownSeason, route.episode, route.season]);
-  const onFocusEpisode = useCallback((episode: MediaItem) => info.current?.show(episode), []);
+  const onFocusEpisode = useCallback((episode: MediaItem) => {
+    info.current?.show(episode);
+    media.current?.show(episode);
+  }, []);
 
   actions.current = (action) => {
     if (action !== 'previous-tab' && action !== 'next-tab') return false;
@@ -299,43 +340,46 @@ export function ShowPage({ show, route, actions }: ShowPageProps) {
 
   return (
     <>
-      <div className="show-top">
-        <ItemHeading item={show} />
-        <EpisodeInfo ref={info} />
-        <div className="item-actions">
-          <FocusButton className="primary" onSelect={() => nav.toast(t('item.playSoon'))}>
-            {play}
-          </FocusButton>
-          <FocusButton onSelect={() => nav.toggleWatched(show)}>
-            {t(isWatched(show) ? 'item.markUnwatched' : 'item.markWatched')}
-          </FocusButton>
-        </div>
-      </div>
-      {seasons.data && seasons.data.length > 1 && (
-        <div className="season-bar">
-          <Glyph button="lb" />
-          <div className="season-tabs" data-scroll="x" data-focus-group="" ref={tabs}>
-            <div className="scroll-content row-content">
-              {seasons.data.map((season) => (
-                <FocusButton
-                  key={season.ratingKey}
-                  className={season.ratingKey === active ? 'season-tab selected' : 'season-tab'}
-                  data-focus-entry={season.ratingKey === active ? '' : undefined}
-                  onSelect={() => setChosen(season.ratingKey)}
-                >
-                  {season.title}
-                </FocusButton>
-              ))}
-            </div>
+      <div className="show-hero" data-scroll-block="">
+        <div className="show-top">
+          <ItemHeading item={show} />
+          <EpisodeInfo ref={info} />
+          <div className="item-actions">
+            <FocusButton className="primary" onSelect={() => nav.toast(t('item.playSoon'))}>
+              {play}
+            </FocusButton>
+            <FocusButton onSelect={() => nav.toggleWatched(show)}>
+              {t(isWatched(show) ? 'item.markUnwatched' : 'item.markWatched')}
+            </FocusButton>
           </div>
-          <Glyph button="rb" />
         </div>
-      )}
-      {shownSeason && list.length > 0 ? (
-        <EpisodeStrip seasonKey={shownSeason} episodes={list} initial={initial} onFocusEpisode={onFocusEpisode} />
-      ) : (
-        <p className="strip-message muted">{episodes.loading || seasons.loading ? t('app.loading') : ''}</p>
-      )}
+        {seasons.data && seasons.data.length > 1 && (
+          <div className="season-bar">
+            <Glyph button="lb" />
+            <div className="season-tabs" data-scroll="x" data-focus-group="" ref={tabs}>
+              <div className="scroll-content row-content">
+                {seasons.data.map((season) => (
+                  <FocusButton
+                    key={season.ratingKey}
+                    className={season.ratingKey === active ? 'season-tab selected' : 'season-tab'}
+                    data-focus-entry={season.ratingKey === active ? '' : undefined}
+                    onSelect={() => setChosen(season.ratingKey)}
+                  >
+                    {season.title}
+                  </FocusButton>
+                ))}
+              </div>
+            </div>
+            <Glyph button="rb" />
+          </div>
+        )}
+        {shownSeason && list.length > 0 ? (
+          <EpisodeStrip seasonKey={shownSeason} episodes={list} initial={initial} onFocusEpisode={onFocusEpisode} />
+        ) : (
+          <p className="strip-message muted">{episodes.loading || seasons.loading ? t('app.loading') : ''}</p>
+        )}
+      </div>
+      <EpisodeMedia ref={media} />
     </>
   );
 }

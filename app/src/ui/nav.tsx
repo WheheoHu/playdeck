@@ -18,7 +18,6 @@ export interface Nav {
   open(item: MediaItem): void;
   /** The X-button menu for an item. */
   menu(item: MediaItem): void;
-  showFileInfo(item: MediaItem): void;
   toggleWatched(item: MediaItem): void;
   toast(message: string): void;
 }

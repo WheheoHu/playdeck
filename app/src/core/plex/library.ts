@@ -22,17 +22,41 @@ export interface MediaStream {
   id: number;
   kind: 'video' | 'audio' | 'subtitle';
   codec?: string;
+  /** BCP 47 tag, e.g. "ja". */
   language?: string;
+  /** The server's display name for the language, e.g. "Japanese". */
+  languageName?: string;
   title: string;
   default: boolean;
   forced: boolean;
   external: boolean;
-  /** Video only. */
-  doviProfile?: number;
-  colorTrc?: string;
+  hearingImpaired: boolean;
+  profile?: string;
+  /** Kbps. */
+  bitrate?: number;
   bitDepth?: number;
+  /** Video only. */
+  level?: number;
+  width?: number;
+  height?: number;
   frameRate?: number;
+  scanType?: string;
+  refFrames?: number;
+  colorPrimaries?: string;
+  colorSpace?: string;
+  colorTrc?: string;
+  colorRange?: string;
+  chromaSubsampling?: string;
+  chromaLocation?: string;
+  dolbyVision: boolean;
+  doviProfile?: number;
+  /** Dolby Vision base-layer compatibility: 1 HDR10, 2 SDR, 4 HLG. */
+  doviBlCompatId?: number;
+  /** Audio only. */
   channels?: number;
+  channelLayout?: string;
+  /** Hz. */
+  samplingRate?: number;
 }
 
 export interface MediaPart {
@@ -168,12 +192,29 @@ interface RawStream {
   extendedDisplayTitle?: string;
   default?: boolean;
   forced?: boolean;
+  hearingImpaired?: boolean;
   key?: string;
-  DOVIProfile?: number;
-  colorTrc?: string;
+  profile?: string;
+  bitrate?: number;
   bitDepth?: number;
+  level?: number | string;
+  width?: number;
+  height?: number;
   frameRate?: number;
+  scanType?: string;
+  refFrames?: number;
+  colorPrimaries?: string;
+  colorSpace?: string;
+  colorTrc?: string;
+  colorRange?: string;
+  chromaSubsampling?: string;
+  chromaLocation?: string;
+  DOVIPresent?: boolean;
+  DOVIProfile?: number;
+  DOVIBLCompatID?: number;
   channels?: number;
+  audioChannelLayout?: string;
+  samplingRate?: number;
 }
 
 interface RawMedia {
@@ -199,20 +240,38 @@ const str = (value?: string | number) => (value === undefined || value === null 
 function parseStream(raw: RawStream): MediaStream | null {
   const kind = STREAM_KINDS[raw.streamType as keyof typeof STREAM_KINDS];
   if (!kind) return null;
+  const level = Number(raw.level);
   return {
     id: raw.id,
     kind,
     codec: raw.codec,
     language: raw.languageTag ?? raw.language,
-    title: raw.extendedDisplayTitle ?? raw.displayTitle ?? raw.codec ?? '',
-    default: Boolean(raw.default),
+    languageName: raw.language,
+    title: raw.extendedDisplayTitle ?? raw.displayTitle ?? raw.codec ?? '',    default: Boolean(raw.default),
     forced: Boolean(raw.forced),
     external: Boolean(raw.key),
-    doviProfile: raw.DOVIProfile,
-    colorTrc: raw.colorTrc,
+    hearingImpaired: Boolean(raw.hearingImpaired),
+    profile: raw.profile,
+    bitrate: raw.bitrate,
     bitDepth: raw.bitDepth,
+    level: Number.isFinite(level) && level > 0 ? level : undefined,
+    width: raw.width,
+    height: raw.height,
     frameRate: raw.frameRate,
+    scanType: raw.scanType,
+    refFrames: raw.refFrames,
+    colorPrimaries: raw.colorPrimaries,
+    colorSpace: raw.colorSpace,
+    colorTrc: raw.colorTrc,
+    colorRange: raw.colorRange,
+    chromaSubsampling: raw.chromaSubsampling,
+    chromaLocation: raw.chromaLocation,
+    dolbyVision: Boolean(raw.DOVIPresent || raw.DOVIProfile),
+    doviProfile: raw.DOVIProfile,
+    doviBlCompatId: raw.DOVIBLCompatID,
     channels: raw.channels,
+    channelLayout: raw.audioChannelLayout,
+    samplingRate: raw.samplingRate,
   };
 }
 

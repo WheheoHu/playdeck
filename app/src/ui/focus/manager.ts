@@ -168,8 +168,28 @@ export class FocusManager {
       // Read by the development performance harness to tell keys that moved focus from no-ops.
       (globalThis as { __playdeckFocusSerial?: number }).__playdeckFocusSerial = ++focusSerial;
     }
-    this.placeRing(target?.rect ?? (element ? this.scrollIntoView(element) : undefined));
+    this.placeRing(element ? this.settle(element, target?.rect) : undefined);
     if (moved) this.notify();
+  }
+
+  /**
+   * Scrolls `element` into view and returns where it will settle. A region's rect is relative to where
+   * the region is now; if the region sits in a scroll container, the container's scroll moves it too.
+   */
+  private settle(element: HTMLElement, regionRect?: Rect): Rect {
+    if (!regionRect) return this.scrollIntoView(element);
+    const root = this.regionRootOf(element);
+    if (!root?.parentElement?.closest('[data-scroll]')) return regionRect;
+    const before = root.getBoundingClientRect();
+    const after = this.scrollIntoView(root);
+    const dx = after.left - before.left;
+    const dy = after.top - before.top;
+    return {
+      left: regionRect.left + dx,
+      right: regionRect.right + dx,
+      top: regionRect.top + dy,
+      bottom: regionRect.bottom + dy,
+    };
   }
 
   private watchLayout(element: HTMLElement | null): void {
@@ -184,14 +204,14 @@ export class FocusManager {
     return this.current;
   }
 
-  /** Scrolls an element's [data-scroll] container to show it, without moving focus. */
+  /** Scrolls an element's nearest [data-scroll] container to show it, without moving focus. */
   reveal(element: HTMLElement): void {
-    this.scrollIntoView(element);
+    this.scrollIntoView(element, false);
   }
 
   /** Re-places the ring, e.g. after a region re-laid out its focused element. */
   refresh(target?: FocusTarget): void {
-    if (target && target.element === this.current) this.placeRing(target.rect);
+    if (target && target.element === this.current) this.placeRing(this.settle(target.element, target.rect));
     else this.scheduleRepair();
   }
 
@@ -281,21 +301,34 @@ export class FocusManager {
 
   /**
    * Containers marked [data-scroll="y"|"x"] scroll by translating their first child, using the same
-   * transition as the ring, so content and ring arrive together. Returns the element's settled rect.
+   * transition as the ring, so content and ring arrive together. Nested containers scroll from the
+   * innermost out, unless `nested` is false. Returns the element's settled rect.
    */
-  private scrollIntoView(element: HTMLElement): Rect {
-    const rect = settledRect(element);
-    const container = element.closest<HTMLElement>('[data-scroll]');
-    const content = container?.firstElementChild as HTMLElement | null;
-    if (!container || !content) return rect;
+  private scrollIntoView(element: HTMLElement, nested = true): Rect {
+    let rect = settledRect(element);
+    let container = element.closest<HTMLElement>('[data-scroll]');
+    while (container) {
+      rect = this.scrollWithin(container, element, rect);
+      container = nested ? (container.parentElement?.closest<HTMLElement>('[data-scroll]') ?? null) : null;
+    }
+    return rect;
+  }
+
+  /**
+   * Scrolls one container so `rect` (the element's position, settled in any inner containers) shows.
+   * An enclosing [data-scroll-block] that fits is shown whole, e.g. a heading with its row of cards.
+   */
+  private scrollWithin(container: HTMLElement, element: HTMLElement, rect: Rect): Rect {
+    const content = container.firstElementChild as HTMLElement | null;
+    if (!content) return rect;
 
     const vertical = container.dataset.scroll !== 'x';
     const box = container.getBoundingClientRect();
-    const contentBox = content.getBoundingClientRect();
+    const contentStart = vertical ? content.getBoundingClientRect().top : content.getBoundingClientRect().left;
     const offset = this.scrollOffsets.get(container) ?? 0;
     // Element edges relative to the content, which moves with its transform.
-    const start = vertical ? rect.top - contentBox.top : rect.left - contentBox.left;
-    const end = vertical ? rect.bottom - contentBox.top : rect.right - contentBox.left;
+    const start = (vertical ? rect.top : rect.left) - contentStart;
+    const end = (vertical ? rect.bottom : rect.right) - contentStart;
     // Everything below is in the container's padding box. The content's transform may be
     // mid-transition, so its rect cannot tell where it will settle; its offset can (containers are
     // positioned, see styles.css), and includes margins that collapse through it.
@@ -313,10 +346,23 @@ export class FocusManager {
       const r = other.getBoundingClientRect();
       return vertical ? r.top < rect.bottom && r.bottom > rect.top : r.left < rect.right && r.right > rect.left;
     };
+    let shownStart = start;
+    let shownEnd = end;
+    const block = element.closest<HTMLElement>('[data-scroll-block]');
+    if (block && content.contains(block)) {
+      const blockBox = block.getBoundingClientRect();
+      const blockStart = (vertical ? blockBox.top : blockBox.left) - contentStart;
+      const blockEnd = (vertical ? blockBox.bottom : blockBox.right) - contentStart;
+      if (blockEnd - blockStart <= viewport) {
+        shownStart = Math.min(start, blockStart);
+        shownEnd = Math.max(end, blockEnd);
+      }
+    }
     const max = Math.max(0, lead + total + trailingPadding - viewport);
     let next = offset;
-    if (lead + start - next < SCROLL_MARGIN) next = lead + start - SCROLL_MARGIN;
-    if (lead + end - next > viewport - SCROLL_MARGIN) next = lead + end - viewport + SCROLL_MARGIN;
+    // The start edge wins when both margins cannot be kept.
+    if (lead + shownEnd - next > viewport - SCROLL_MARGIN) next = lead + shownEnd - viewport + SCROLL_MARGIN;
+    if (lead + shownStart - next < SCROLL_MARGIN) next = lead + shownStart - SCROLL_MARGIN;
     if (inLineWith(items[0])) next = 0;
     else if (inLineWith(items[items.length - 1])) next = max;
     next = Math.max(0, Math.min(next, max));

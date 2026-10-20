@@ -9,7 +9,6 @@ import { FocusButton, FocusScope, useFocusManager } from '../focus/react';
 import { HomeScreen } from '../home/HomeScreen';
 import type { Action } from '../input';
 import { ContextMenu } from '../item/ContextMenu';
-import { FileInfo } from '../item/FileInfo';
 import { ItemPage } from '../item/ItemPage';
 import { LibrariesScreen } from '../library/LibrariesScreen';
 import { LibraryPage } from '../library/LibraryPage';
@@ -20,7 +19,7 @@ import { useServers } from '../servers';
 
 const TOAST_MS = 2500;
 
-const SHELL_HINTS = { y: 'hint.search', menu: 'hint.settings' };
+const SHELL_HINTS = { menu: 'hint.settings' };
 
 function TabBar({ tab, onTab, session }: { tab: Tab; onTab: (tab: Tab) => void; session: Session }) {
   const { t } = useApp();
@@ -63,7 +62,6 @@ export function MainShell({ session }: { session: Session }) {
   );
   const [stack, setStack] = useState<Route[]>([]);
   const [menuItem, setMenuItem] = useState<MediaItem | null>(null);
-  const [infoItem, setInfoItem] = useState<MediaItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -96,7 +94,6 @@ export function MainShell({ session }: { session: Session }) {
       pop: () => setStack((current) => current.slice(0, -1)),
       open: (item) => setStack((current) => [...current, routeFor(item)]),
       menu: setMenuItem,
-      showFileInfo: setInfoItem,
       toggleWatched,
       toast: setToast,
     }),
@@ -106,10 +103,6 @@ export function MainShell({ session }: { session: Session }) {
   const onShellAction = useCallback((action: Action) => {
     if (action === 'previous-tab' || action === 'next-tab') {
       setTab((current) => TABS[(TABS.indexOf(current) + (action === 'next-tab' ? 1 : TABS.length - 1)) % TABS.length]);
-      return true;
-    }
-    if (action === 'search') {
-      setTab('search');
       return true;
     }
     return false;
@@ -128,9 +121,7 @@ export function MainShell({ session }: { session: Session }) {
       {stack.map((route, index) => (
         <Page key={index} route={route} hidden={index < stack.length - 1} />
       ))}
-      {menuItem && <ContextMenu item={menuItem} here={stack.at(-1)} onClose={() => setMenuItem(null)} />}
-      {infoItem && <FileInfo item={infoItem} onClose={() => setInfoItem(null)} />}
-      {toast && <div className="toast">{toast}</div>}
+      {menuItem && <ContextMenu item={menuItem} here={stack.at(-1)} onClose={() => setMenuItem(null)} />}      {toast && <div className="toast">{toast}</div>}
     </NavContext.Provider>
   );
 }

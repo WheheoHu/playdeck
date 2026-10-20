@@ -26,14 +26,14 @@ export function pickNext(from: Rect, candidates: Rect[], direction: Direction): 
   const fromY = (from.top + from.bottom) / 2;
   const horizontal = direction === 'left' || direction === 'right';
 
-  const ahead = candidates.map((rect) => {
-    const x = (rect.left + rect.right) / 2;
-    const y = (rect.top + rect.bottom) / 2;
-    return direction === 'right' ? x > fromX + 1 && rect.left >= from.left + 1
-      : direction === 'left' ? x < fromX - 1 && rect.right <= from.right - 1
-      : direction === 'down' ? y > fromY + 1 && rect.top >= from.top + 1
-      : y < fromY - 1 && rect.bottom <= from.bottom - 1;
-  });
+  // Both edges must lie further in the direction, so a shorter neighbour in a top-aligned row is not
+  // "above", nor a narrower one in a left-aligned column "left".
+  const ahead = candidates.map((rect) =>
+    direction === 'right' ? rect.left >= from.left + 1 && rect.right >= from.right + 1
+    : direction === 'left' ? rect.right <= from.right - 1 && rect.left <= from.left - 1
+    : direction === 'down' ? rect.top >= from.top + 1 && rect.bottom >= from.bottom + 1
+    : rect.bottom <= from.bottom - 1 && rect.top <= from.top - 1,
+  );
   const primary = candidates.map((rect) =>
     direction === 'right' ? Math.max(0, rect.left - from.right)
     : direction === 'left' ? Math.max(0, from.left - rect.right)

@@ -10,6 +10,7 @@ import { type Route, useNav } from '../nav';
 import { useResource } from '../resource';
 import { useServers } from '../servers';
 import { Credits, ItemActions } from './ItemActions';
+import { MediaInfo } from './MediaInfo';
 import { ShowPage } from './ShowPage';
 
 export function ItemPage({ route }: { route: Extract<Route, { kind: 'item' }> }) {
@@ -29,15 +30,24 @@ export function ItemPage({ route }: { route: Extract<Route, { kind: 'item' }> })
       <Backdrop item={item ?? null} className="page-backdrop" />
       {!item ? (
         <p className="page-message muted">{resource.error ? t('item.loadFailed') : t('app.loading')}</p>
-      ) : item.type === 'show' ? (
-        <ShowPage show={item} route={route} actions={pageAction} />
       ) : (
-        <div className="item-body">
-          <ItemHeading item={item} badges={qualityBadges(item)} />
-          {item.tagline && <p className="item-tagline">{item.tagline}</p>}
-          {item.summary && <p className="item-summary">{item.summary}</p>}
-          <Credits item={item} />
-          <ItemActions item={item} autoFocus />
+        <div className="item-scroll" data-scroll="y">
+          <div className="scroll-content">
+            {item.type === 'show' ? (
+              <ShowPage show={item} route={route} actions={pageAction} />
+            ) : (
+              <>
+                <div className="item-body" data-scroll-block="">
+                  <ItemHeading item={item} badges={qualityBadges(item)} />
+                  {item.tagline && <p className="item-tagline">{item.tagline}</p>}
+                  {item.summary && <p className="item-summary">{item.summary}</p>}
+                  <Credits item={item} />
+                  <ItemActions item={item} autoFocus />
+                </div>
+                <MediaInfo item={item} />
+              </>
+            )}
+          </div>
         </div>
       )}
     </FocusScope>

@@ -871,14 +871,22 @@ p {
 }
 
 /* Item page */
-.item-body {
+/* Detail pages scroll down to their media information; the scroll ends above the hints bar. */
+.item-scroll {
   position: absolute;
-  top: 72px;
-  left: 48px;
+  inset: 0 0 44px 0;
+}
+
+/* Tall enough that the media information starts near the bottom edge, hinting that it is there. */
+.item-body {
   display: grid;
   gap: 14px;
+  align-content: start;
   justify-items: start;
-  width: 760px;
+  width: 856px;
+  min-height: 610px;
+  padding: 72px 48px 0;
+  box-sizing: border-box;
 }
 
 .item-tagline {
@@ -916,6 +924,11 @@ p {
 }
 
 /* Show page: fixed positions, so loading seasons and episodes never shifts what is above them. */
+.show-hero {
+  position: relative;
+  height: 700px;
+}
+
 .show-top {
   position: absolute;
   top: 36px;
@@ -1058,34 +1071,142 @@ p {
   color: var(--accent);
 }
 
-.info-panel {
-  width: 820px;
-  max-height: 700px;
-  padding: 32px 40px;
-  border-radius: 16px;
-  background: var(--surface);
-  box-sizing: border-box;
+/* Media information under detail pages */
+/* Fades the backdrop out behind the cards; it scrolls with them, so it costs nothing per frame. */
+.media-info {
+  padding: 8px 0 24px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 140px);
 }
 
-.info-section {
-  margin: 4px 0;
-  padding: 10px 12px;
-  border-radius: 8px;
+.media-info-head {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  margin: 0 48px;
 }
 
-.info-section h3 {
-  margin: 0 0 6px;
-}
-
-.info-section ul {
+.media-info-head h2 {
   margin: 0;
-  padding-left: 18px;
-  line-height: 1.6;
+  font-size: 24px;
 }
 
-.info-file {
+.media-info-head .muted {
+  font-size: 17px;
+}
+
+.media-info-message {
+  margin: 12px 48px;
+  font-size: 16px;
+}
+
+.media-file {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  margin: 8px 48px 0;
+  overflow: hidden;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.media-file-name {
+  min-width: 0;
+  overflow: hidden;
   font-size: 13px;
-  word-break: break-all;
+  text-overflow: ellipsis;
+}
+
+/* Full width, so cards scroll out to the screen edge; the padding leaves room for the focus scale. */
+.track-row {
+  padding: 12px 48px 14px;
+}
+
+.track-row-content {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  width: max-content;
+}
+
+.track-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  width: 368px;
+  padding: 18px 20px 20px;
+  border-radius: 14px;
+  background: rgb(23 23 29 / 90%);
+  box-sizing: border-box;
+  transition: transform var(--focus-ms) var(--ease);
+  --focus-scale: 1.02;
+  --kind: var(--accent);
+}
+
+.track-card.audio {
+  --kind: #5cc8c2;
+}
+
+.track-card.subtitle {
+  --kind: #a99cf0;
+}
+
+.track-kind {
+  display: flex;
+  justify-content: space-between;
+  color: var(--kind);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.track-count {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.track-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.track-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.track-flags span {
+  padding: 2px 8px;
+  border: 1px solid rgb(242 242 245 / 22%);
+  border-radius: 6px;
+  color: rgb(242 242 245 / 85%);
+  font-size: 12px;
+}
+
+.track-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.track-facts dt {
+  color: var(--muted);
+}
+
+.track-facts dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Search */

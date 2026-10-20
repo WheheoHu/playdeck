@@ -65,6 +65,14 @@ describe('spatial navigation', () => {
     expect(pickNext(episode, [...buttons, ...tabs], 'up')).toBe(3);
   });
 
+  it('does not take a shorter neighbour in a top-aligned row for the row above', () => {
+    const tall = box(430, 190, 370, 540);
+    const short = box(820, 190, 370, 150);
+    const above = box(330, 40, 300, 170);
+    expect(pickNext(tall, [short, above], 'up')).toBe(1);
+    expect(pickNext(short, [tall], 'down')).toBe(-1);
+  });
+
   it('stops at the edge', () => {
     expect(pickNext(c, all, 'right')).toBe(-1);
     expect(pickNext(a, all, 'up')).toBe(-1);

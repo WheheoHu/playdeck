@@ -8,7 +8,6 @@ export function ItemActions({ item, autoFocus }: { item: MediaItem; autoFocus?: 
   const { t } = useApp();
   const nav = useNav();
   const resume = item.viewOffset ? formatDuration(item.viewOffset) : undefined;
-  const playable = item.type === 'movie' || item.type === 'episode';
 
   return (
     <div className="item-actions">
@@ -18,7 +17,6 @@ export function ItemActions({ item, autoFocus }: { item: MediaItem; autoFocus?: 
       <FocusButton onSelect={() => nav.toggleWatched(item)}>
         {t(isWatched(item) ? 'item.markUnwatched' : 'item.markWatched')}
       </FocusButton>
-      {playable && <FocusButton onSelect={() => nav.showFileInfo(item)}>{t('item.fileInfo')}</FocusButton>}
     </div>
   );
 }

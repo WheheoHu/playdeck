@@ -169,7 +169,8 @@ At startup and on display changes, PlayDeck compares its window size with the na
 - **Libraries:** browsed per server and per library.
 - **Search:** covers all servers.
 - **Detail pages:** movies, and shows with their seasons and episodes.
-- **Actions:** mark watched or unwatched, choose a version, view file info.
+- **Actions:** mark watched or unwatched, choose a version.
+- **Media information:** below the details, each version's file and its video, audio and subtitle tracks.
 - **Subtitles:** embedded tracks and server-side sidecar files.
 - **Images:** requested through the Plex photo transcoder at display size.
 
@@ -201,14 +202,13 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | Right stick | Fast scroll |
 | A / Enter | Select |
 | B / Esc / Backspace | Back |
-| X | Context menu (watched state, version, file info); Delete on the search keyboard |
-| Y | Search; Sort on a library page |
+| X | Context menu (watched state, version); Delete on the search keyboard |
+| Y | Sort on a library page |
 | LB / RB | Switch top tabs (Home, Libraries, Search) |
 | LT / RT | Page up and down in grids, or jump by letter |
 | Menu (☰) | Settings |
 
 - A bar along the bottom of the screen shows, SteamOS style, the buttons that do something for the focused element and its screen. LB and RB glyphs flank the top tabs.
-
 ### 7.3 Playback OSD (mpv Lua, defaults, all remappable)
 
 | Input | Action |
@@ -363,9 +363,9 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 - **Details.**
   - One page serves movies and shows. Shows have season tabs and episodes (laid out horizontally since 13.3).
   - Opening an episode from a row lands on its show, with its season selected and the episode focused.
-  - File info lists every version, file, video, audio and subtitle stream.
+  - File info listed every version, file, video, audio and subtitle stream. Since 13.3 this is media information under the page, not an overlay.
   - Play is a placeholder until M3.
-- **Context menu (X).** Open or go to the show, mark watched or unwatched (`/:/scrobble`, `/:/unscrobble`, then cache invalidation), and file info.
+- **Context menu (X).** Open or go to the show, and mark watched or unwatched (`/:/scrobble`, `/:/unscrobble`, then cache invalidation). It also offered file info until 13.3.
 - **Search.**
   - A 6-column on-screen keyboard; a physical keyboard types directly.
   - The query is debounced by 350 ms and sent to `/hubs/search` on every online server. Results are grouped into movies, shows and episodes.
@@ -379,7 +379,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - `[data-scroll]` containers scroll by translating their content. The settled position accounts for the container's padding.
   - Content that loads after its screen opened may claim initial focus, unless the user has already moved in that scope (`offerInitial`). Switching tabs resets this.
   - A `ResizeObserver` on the focused element's container re-places the ring after layout shifts.
-- **Keyboard (development and remotes).** `[` and `]` switch tabs, `/` opens search, and F1 opens settings.
+- **Keyboard (development and remotes).** `[` and `]` switch tabs, `/` is Y, and F1 opens settings.
 - **Performance (`app/deck/perf.py`).**
   - The harness drives Home rows, a tab switch, opening a Movies grid, fast grid scrolling and paging, and the return Home. The `keys` dev command reports which keys actually moved focus; keys that moved nothing start no animation and are excluded.
   - Result on the Deck: rAF p95 11.2 ms with 2 drops in 1,721 frames. While animations ran, gamescope measured p95 11.11 ms with 3 single-vsync misses in 755 presents (0.4%). All of them came at a tab switch or when a new page mounted.
@@ -397,6 +397,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 - **Home.**
   - Row labels are 24 px.
   - Settings → "Libraries on Home" hides chosen libraries (`homeHiddenLibraries`, as `serverId/sectionKey`). Items are filtered by `librarySectionID` before the merge, so hidden libraries do not use up a row's length.
+  - Y no longer opens Search; RB reaches it from the tabs.
 - **Libraries.**
   - Library tiles have 24 px names.
   - The grid has 6 columns of 168×252 posters, centered, with 17 px titles. Two full rows fit above the hints bar.
@@ -404,23 +405,33 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 - **Show page.**
   - Episodes are a horizontal, windowed strip of 288×162 stills, so long seasons are never mounted whole.
   - The focused episode's title, facts and summary sit at the top in a fixed box, updated 120 ms after focus settles.
-  - A plays the episode (a placeholder until M3) and X opens its menu. Nothing on the page scrolls vertically.
+  - A plays the episode (a placeholder until M3) and X opens its menu.
   - Moving into the season tabs lands on the selected season (`data-focus-group` / `data-focus-entry`).
   - LB/RB, shown on either side of the season tabs, switch seasons from anywhere on the page. The previous season stays on screen until the next one loads. Focus in the strip moves to the new season's next episode, and a focused season tab follows the selection.
+- **Media information** replaces the File info overlay, on movie and show pages.
+  - The first screen is unchanged; the section's heading shows at the bottom edge, and Down scrolls the page to it.
+  - Each version has a summary line (resolution, container, size, duration, bit rate, file name) and a row of track cards: video, then audio, then subtitles, numbered within their kind. The row scrolls sideways when there are more than three.
+  - Cards list what the server reports: codec, profile, level, resolution, frame rate, bit rate, dynamic range (Dolby Vision profile, HDR10, HLG or SDR), bit depth, chroma and color details for video; channels, layout and sample rate for audio. Default, forced, SDH and external are tags.
+  - On a show page the section follows the focused episode. Episode lists carry no tracks, so the full episode is fetched 300 ms after focus rests on it, and the previous one stays until it arrives.
+  - The formatting is in `core/mediaInfo.ts`; Plex's level numbers are read per codec (H.264 41 is 4.1, HEVC 153 is 5.1, AV1 13 is 5.1).
 - **Focus engine.**
   - The ring was 12 px above Libraries tiles. A heading's margin collapsed through the scroll content, so the content did not start at the container's padding edge.
   - The settled position now comes from the content's `offsetTop`; `[data-scroll]` containers are positioned so that they are its offset parent.
   - Scroll limits are measured in the container's padding box, including its end padding. Before this, Settings stopped scrolling 72 px short and its last row of buttons stayed below the panel.
   - The first and last rows of focusables scroll all the way, so the headings and notes beyond them show.
   - The Libraries tab ends above the hints bar, so its last row of tiles never sits under it.
+  - Nested `[data-scroll]` containers scroll from the innermost out, e.g. a row of track cards inside the scrolling detail page.
+  - A `[data-scroll-block]` that fits the container is revealed whole when anything in it takes focus: the first screen of a detail page scrolls back to the top, and the media information shows with its heading.
+  - A region inside a scroll container (the episode strip) scrolls it too; its settled rect is shifted by the same amount.
   - Measured elements are sized for their focus scale, read from `--focus-scale`.
   - Spatial navigation:
     - Candidates in the nearest row ahead beat any farther row, so a narrow row of tabs is never skipped for a wider row behind it.
     - Left and right stay within the row.
+    - A candidate is ahead only if both its edges are, so a shorter card in a top-aligned row is not "above" a taller neighbour.
 - **Performance.**
   - `perf.py --cold` clears the HTTP cache first, so every poster and still loads during the run. Keys repeat every 90 ms, like a held D-pad.
   - The script now also covers the Libraries tab, the show page's episode strip and a season switch.
-  - Result on the Deck: rAF p95 11.2 ms with 1 drop in 2,915 frames. gamescope measured p95 11.11 ms with 6 single-vsync misses in 1,174 presents (0.5%).
+  - Result on the Deck: rAF p95 11.2 ms with 1 drop in 2,916 frames. gamescope measured p95 11.11 ms with 7 single-vsync misses in 1,182 presents (0.6%).
 
 M0–M3 running on the Deck in dev mode is the MVP. Release 0.1 is the MVP plus M4. M5 follows when a suitable 4K HDR display is available for testing; until then, tests that need an external display are skipped.
 
