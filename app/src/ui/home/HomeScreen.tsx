@@ -1,7 +1,7 @@
 import { forwardRef, memo, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { episodeLabel } from '../../core/format';
 import { mergeContinueWatching, mergeRecentlyAdded } from '../../core/home';
-import { type MediaItem, fetchContinueWatching, fetchRecentlyAdded } from '../../core/plex/library';
+import { type MediaItem, fetchContinueWatching, fetchRecentlyAdded, libraryId } from '../../core/plex/library';
 import { useApp } from '../AppContext';
 import { Backdrop } from '../components/Backdrop';
 import { ItemHeading } from '../components/ItemHeading';
@@ -48,14 +48,18 @@ const Hero = memo(
 );
 
 export function HomeScreen() {
-  const { plex, t } = useApp();
+  const { plex, settings, t } = useApp();
   const { online, entries } = useServers();
   const nav = useNav();
   const hero = useRef<HeroHandle>(null);
-  const key = online.map((server) => server.id).sort().join(',');
+  const hidden = settings.homeHiddenLibraries;
+  const key = online.map((server) => server.id).sort().join(',') + (hidden.length ? `:hide=${[...hidden].sort()}` : '');
 
-  const gather = <T,>(fetch: (index: number) => Promise<T[]>) =>
-    Promise.all(online.map((_, index) => fetch(index).catch(() => [] as T[])));
+  // Filtered before merging, so hidden libraries do not use up the merged rows' length.
+  const gather = async (fetch: (index: number) => Promise<MediaItem[]>) => {
+    const lists = await Promise.all(online.map((_, index) => fetch(index).catch(() => [] as MediaItem[])));
+    return lists.map((list) => list.filter((item) => !hidden.includes(libraryId(item))));
+  };
   const continueWatching = useResource(key ? `home:continue:${key}` : null, async () =>
     mergeContinueWatching(await gather((i) => fetchContinueWatching(plex, online[i]))),
   );

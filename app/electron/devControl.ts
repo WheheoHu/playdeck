@@ -10,7 +10,8 @@ type Command =
   | { cmd: 'perf-start' }
   | { cmd: 'perf-stop' }
   | { cmd: 'trace-start' }
-  | { cmd: 'trace-stop'; path: string };
+  | { cmd: 'trace-stop'; path: string }
+  | { cmd: 'clear-cache' };
 
 const TRACE_CATEGORIES = ['devtools.timeline', 'blink', 'cc', 'gpu', 'viz', 'disabled-by-default-devtools.timeline'];
 
@@ -71,6 +72,10 @@ export async function startDevControl(socketPath: string, win: BrowserWindow): P
       }
       case 'eval':
         return win.webContents.executeJavaScript(command.js);
+      case 'clear-cache':
+        // HTTP cache only (posters, art), so a run measures first-visit image loading.
+        await win.webContents.session.clearCache();
+        return null;
     }
   }
 

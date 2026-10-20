@@ -10,7 +10,7 @@ import {
   useState,
 } from 'react';
 import { type Action, listenForActions } from '../input';
-import { type Focusable, type Region, FocusManager } from './manager';
+import { type Focusable, type Hints, type Region, FocusManager } from './manager';
 
 const FocusContext = createContext<FocusManager | null>(null);
 
@@ -44,15 +44,17 @@ interface FocusScopeProps {
   onBack?: () => void;
   /** Actions nothing focused inside the scope handled; returns whether it handled one. */
   onAction?: (action: Action) => boolean;
+  /** Button hints for the whole scope; B reads "Back" by default when `onBack` is set. */
+  hints?: Hints;
   hidden?: boolean;
 }
 
 /** A focus layer. The most recently mounted scope receives input. */
-export function FocusScope({ children, className, onBack, onAction, hidden }: FocusScopeProps) {
+export function FocusScope({ children, className, onBack, onAction, hints, hidden }: FocusScopeProps) {
   const manager = useFocusManager();
   const root = useRef<HTMLDivElement>(null);
-  const handlers = useRef({ onBack, onAction });
-  handlers.current = { onBack, onAction };
+  const handlers = useRef({ onBack, onAction, hints });
+  handlers.current = { onBack, onAction, hints };
 
   useLayoutEffect(() => {
     const scope = {
@@ -62,10 +64,14 @@ export function FocusScope({ children, className, onBack, onAction, hidden }: Fo
         return Boolean(handlers.current.onBack);
       },
       onAction: (action: Action) => handlers.current.onAction?.(action) ?? false,
+      hints: (): Hints => ({ b: handlers.current.onBack ? 'hint.back' : undefined, ...handlers.current.hints }),
     };
     manager.pushScope(scope);
     return () => manager.removeScope(scope);
   }, [manager]);
+
+  const hintsKey = JSON.stringify(hints ?? null);
+  useEffect(() => manager.notify(), [manager, hintsKey]);
 
   return (
     <div ref={root} className={className} style={hidden ? { visibility: 'hidden' } : undefined}>

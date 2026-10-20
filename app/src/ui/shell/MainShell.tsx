@@ -4,6 +4,7 @@ import { setWatched } from '../../core/plex/library';
 import type { Session } from '../../core/session';
 import { useApp } from '../AppContext';
 import { Avatar } from '../components/Avatar';
+import { Glyph } from '../components/Hints';
 import { FocusButton, FocusScope, useFocusManager } from '../focus/react';
 import { HomeScreen } from '../home/HomeScreen';
 import type { Action } from '../input';
@@ -19,17 +20,21 @@ import { useServers } from '../servers';
 
 const TOAST_MS = 2500;
 
+const SHELL_HINTS = { y: 'hint.search', menu: 'hint.settings' };
+
 function TabBar({ tab, onTab, session }: { tab: Tab; onTab: (tab: Tab) => void; session: Session }) {
   const { t } = useApp();
   return (
     <nav className="tab-bar">
+      <Glyph button="lb" />
       {TABS.map((name) => (
         <FocusButton key={name} className={name === tab ? 'tab active' : 'tab'} onSelect={() => onTab(name)}>
           {t(`tabs.${name}`)}
         </FocusButton>
       ))}
+      <Glyph button="rb" />
       <div className="tab-bar-user">
-        <span className="muted">{t('tabs.settingsHint')}</span>
+        <span>{session.user.title}</span>
         <Avatar name={session.user.title} src={session.user.thumb} size={36} />
       </div>
     </nav>
@@ -112,7 +117,7 @@ export function MainShell({ session }: { session: Session }) {
 
   return (
     <NavContext.Provider value={nav}>
-      <FocusScope className="shell" onAction={onShellAction} hidden={stack.length > 0}>
+      <FocusScope className="shell" onAction={onShellAction} hints={SHELL_HINTS} hidden={stack.length > 0}>
         <TabBar tab={tab} onTab={setTab} session={session} />
         <div className="tab-content">
           {tab === 'home' && <HomeScreen />}
@@ -123,7 +128,7 @@ export function MainShell({ session }: { session: Session }) {
       {stack.map((route, index) => (
         <Page key={index} route={route} hidden={index < stack.length - 1} />
       ))}
-      {menuItem && <ContextMenu item={menuItem} onClose={() => setMenuItem(null)} />}
+      {menuItem && <ContextMenu item={menuItem} here={stack.at(-1)} onClose={() => setMenuItem(null)} />}
       {infoItem && <FileInfo item={infoItem} onClose={() => setInfoItem(null)} />}
       {toast && <div className="toast">{toast}</div>}
     </NavContext.Provider>

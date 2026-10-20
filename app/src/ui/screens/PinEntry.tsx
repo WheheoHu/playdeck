@@ -36,7 +36,7 @@ export function PinEntry({ name, onSubmit, onCancel }: PinEntryProps) {
   }
 
   return (
-    <FocusScope className="overlay" onBack={onCancel}>
+    <FocusScope className="overlay" onBack={onCancel} hints={{ b: 'pin.cancel' }}>
       <div className="pin-panel">
         <h2>{t('pin.title', { name })}</h2>
         <div className={wrong ? 'pin-dots wrong' : 'pin-dots'}>

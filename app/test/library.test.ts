@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mergeContinueWatching, mergeRecentlyAdded, posterOf, progressOf } from '../src/core/home';
-import { type MediaItem, type RawMetadata, fetchSectionPage, imageUrl, parseItem } from '../src/core/plex/library';
+import { type MediaItem, type RawMetadata, fetchSectionPage, imageUrl, libraryId, parseItem } from '../src/core/plex/library';
 import { fakeFetch } from './support';
 
 const SERVER = { id: 'srv', name: 'Home', baseUrl: 'https://plex.example:32400', token: 'tok' };
@@ -116,6 +116,22 @@ describe('library requests', () => {
       'X-Plex-Container-Size': '50',
     });
     expect(fake.calls[0].headers['X-Plex-Token']).toBe('tok');
+  });
+
+  it('orders shows by their newest episode for "date added"', async () => {
+    const fake = fakeFetch([['GET', /\/all\?/, () => ({ body: { MediaContainer: { size: 0, totalSize: 0 } } })]]);
+    const shows = { serverId: 'srv', key: '2', type: 'show' as const, title: 'TV Shows' };
+    await fetchSectionPage(fake.context, SERVER, shows, 0, 10, 'added');
+    await fetchSectionPage(fake.context, SERVER, { ...shows, type: 'movie' }, 0, 10, 'added');
+    await fetchSectionPage(fake.context, SERVER, shows, 0, 10, 'rating');
+    const sorts = fake.calls.map((call) => new URL(call.url).searchParams.get('sort'));
+    expect(sorts).toEqual(['episode.addedAt:desc', 'addedAt:desc', 'audienceRating:desc']);
+  });
+
+  it('identifies the library an item came from', () => {
+    const episode = parseItem('srv', { ...MOVIE, librarySectionID: 6 });
+    expect(libraryId(episode)).toBe('srv/6');
+    expect(libraryId({ serverId: 'srv', key: '6', type: 'show', title: 'Anime' })).toBe('srv/6');
   });
 
   it('builds transcoder URLs in physical pixels', () => {

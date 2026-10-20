@@ -1,23 +1,7 @@
+import type { PlexConnection, PlexServer } from '../../../shared/bridge';
 import { type PlexContext, requestAccountApi } from './client';
 
-export interface PlexConnection {
-  uri: string;
-  protocol: 'http' | 'https';
-  address: string;
-  port: number;
-  local: boolean;
-  relay: boolean;
-  ipv6: boolean;
-}
-
-export interface PlexServer {
-  name: string;
-  clientIdentifier: string;
-  accessToken: string;
-  owned: boolean;
-  productVersion?: string;
-  connections: PlexConnection[];
-}
+export type { PlexConnection, PlexServer };
 
 interface ResourceResponse {
   name?: string;

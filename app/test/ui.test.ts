@@ -49,8 +49,20 @@ describe('spatial navigation', () => {
     expect(pickNext(d, all, 'up')).toBe(0);
   });
 
-  it('falls back to a diagonal element when nothing is aligned', () => {
+  it('falls back to a diagonal element below when nothing is aligned', () => {
     expect(pickNext(b, all, 'down')).toBe(3);
+  });
+
+  it('treats the end of a row as an edge', () => {
+    expect(pickNext(d, all, 'right')).toBe(4);
+    expect(pickNext(e, [a, b, c, d, e, box(360, 200)], 'right')).toBe(-1);
+  });
+
+  it('never skips a nearer row of narrow tabs for an aligned row behind it', () => {
+    const episode = box(300, 450, 300, 170);
+    const tabs = [box(48, 394, 75, 40), box(131, 394, 84, 40)];
+    const buttons = [box(38, 250, 120, 52), box(170, 250, 170, 52)];
+    expect(pickNext(episode, [...buttons, ...tabs], 'up')).toBe(3);
   });
 
   it('stops at the edge', () => {

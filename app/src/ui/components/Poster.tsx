@@ -7,13 +7,15 @@ interface PosterProps {
   progress?: number | null;
   watched?: boolean;
   badge?: string;
+  /** Size variant, e.g. "landscape" for episode stills. */
+  variant?: string;
 }
 
 /**
  * A poster card. Images are decoded off the main thread before being revealed, so a late decode never
  * lands inside an animation frame (docs/DESIGN.md, section 8.2).
  */
-export const Poster = memo(function Poster({ id, src, title, progress, watched, badge }: PosterProps) {
+export const Poster = memo(function Poster({ id, src, title, progress, watched, badge, variant }: PosterProps) {
   const image = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export const Poster = memo(function Poster({ id, src, title, progress, watched, 
   }, [src]);
 
   return (
-    <div className="card" id={id}>
+    <div className={variant ? `card ${variant}` : 'card'} id={id}>
       <div className="card-fallback">{title}</div>
       {src && <img ref={image} alt="" decoding="async" />}
       {badge && <span className="card-badge">{badge}</span>}

@@ -26,28 +26,38 @@ export async function afterSignIn(context: PlexContext, account: PlexAccount): P
   return { kind: 'ready', session: { account, user: accountAsUser(account), homeUsers: users } };
 }
 
+/** A remembered user starts without waiting on plex.tv; revalidateSession catches up afterwards. */
+export function resumeSession(credentials: Credentials): Session | null {
+  if (!credentials.account || !credentials.user) return null;
+  return { account: credentials.account, user: credentials.user, homeUsers: credentials.homeUsers ?? [] };
+}
+
 /**
- * Revalidates stored credentials. A rejected token signs out; an unreachable plex.tv keeps the stored
- * session so the app still works when only the servers are reachable.
+ * Checks stored credentials against plex.tv. A rejected token signs out; an unreachable plex.tv keeps
+ * the stored session so the app still works when only the servers are reachable.
  */
 export async function restoreSession(context: PlexContext, credentials: Credentials): Promise<RestoredSession> {
   if (!credentials.account) return { kind: 'signed-out' };
-  let account: PlexAccount;
-  try {
-    account = await fetchAccount(context, credentials.account.token);
-  } catch (error) {
-    if (error instanceof PlexHttpError && error.isAuthError) return { kind: 'signed-out' };
-    const user = credentials.user ?? accountAsUser(credentials.account);
-    return { kind: 'ready', session: { account: credentials.account, user, homeUsers: [] } };
+  const stored = credentials.account;
+  const [account, users] = await Promise.allSettled([
+    fetchAccount(context, stored.token),
+    fetchHomeUsers(context, stored.token),
+  ]);
+  if (account.status === 'rejected') {
+    const { reason } = account;
+    if (reason instanceof PlexHttpError && reason.isAuthError) return { kind: 'signed-out' };
+    const user = credentials.user ?? accountAsUser(stored);
+    return { kind: 'ready', session: { account: stored, user, homeUsers: credentials.homeUsers ?? [] } };
   }
 
-  const users = await fetchHomeUsers(context, account.token).catch(() => []);
+  const current = account.value;
+  const homeUsers = users.status === 'fulfilled' ? users.value : (credentials.homeUsers ?? []);
   const remembered = credentials.user;
-  if (remembered && (users.length === 0 || users.some((user) => user.uuid === remembered.uuid))) {
-    return { kind: 'ready', session: { account, user: remembered, homeUsers: users } };
+  if (remembered && (homeUsers.length === 0 || homeUsers.some((user) => user.uuid === remembered.uuid))) {
+    return { kind: 'ready', session: { account: current, user: remembered, homeUsers } };
   }
-  if (users.length > 1) return { kind: 'choose-user', account, users };
-  return { kind: 'ready', session: { account, user: accountAsUser(account), homeUsers: users } };
+  if (homeUsers.length > 1) return { kind: 'choose-user', account: current, users: homeUsers };
+  return { kind: 'ready', session: { account: current, user: accountAsUser(current), homeUsers } };
 }
 
 export async function chooseHomeUser(

@@ -24,12 +24,19 @@ export interface Region {
   action?(current: HTMLElement, action: Action): boolean;
 }
 
+/**
+ * Button hints by button name (`a`, `b`, `x`, `y`, `lt-rt`, `menu`), each a message key or "" for none.
+ * The focused element contributes through `data-hint-<button>` attributes on itself or an ancestor.
+ */
+export type Hints = Partial<Record<string, string>>;
+
 /** A focus layer: a screen or an overlay. Only the topmost scope receives input. */
 export interface Scope {
   root: HTMLElement;
   /** Returns whether it handled B / Escape; unhandled presses fall through to the app. */
   onBack?: () => boolean;
   onAction?: (action: Action) => boolean;
+  hints?: () => Hints;
   last?: FocusTarget;
 }
 
@@ -40,6 +47,20 @@ const DIRECTIONS = new Set<Action>(['up', 'down', 'left', 'right']);
 
 function toRect(rect: DOMRect): Rect {
   return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+}
+
+/**
+ * Where the element ends up once its own focus transform settles. Focused elements scale by
+ * `--focus-scale` around their center, and the transition has only just started when this is read.
+ */
+function settledRect(element: HTMLElement): Rect {
+  const rect = element.getBoundingClientRect();
+  const scale = parseFloat(getComputedStyle(element).getPropertyValue('--focus-scale')) || 1;
+  const x = (rect.left + rect.right) / 2;
+  const y = (rect.top + rect.bottom) / 2;
+  const halfWidth = (element.offsetWidth * scale) / 2;
+  const halfHeight = (element.offsetHeight * scale) / 2;
+  return { left: x - halfWidth, right: x + halfWidth, top: y - halfHeight, bottom: y + halfHeight };
 }
 
 /**
@@ -61,6 +82,7 @@ export class FocusManager {
   private resized: Element | null = null;
   private current: HTMLElement | null = null;
   private repairFrame = 0;
+  private readonly listeners = new Set<() => void>();
 
   constructor(container: HTMLElement) {
     this.ring = document.createElement('div');
@@ -106,6 +128,7 @@ export class FocusManager {
     this.scopes.push(scope);
     this.observer.observe(scope.root, { childList: true, subtree: true });
     this.focusInitial(scope);
+    this.notify();
   }
 
   removeScope(scope: Scope): void {
@@ -114,12 +137,29 @@ export class FocusManager {
     const wasTop = index === this.scopes.length - 1;
     this.scopes.splice(index, 1);
     if (wasTop && this.top()) this.focusInitial(this.top()!);
+    this.notify();
+  }
+
+  /** Called after focus moves or the top scope changes; returns an unsubscriber. */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Lets listeners re-read state that changed without focus moving, such as a scope's hints. */
+  notify(): void {
+    for (const listener of this.listeners) listener();
+  }
+
+  get topScope(): Scope | undefined {
+    return this.top();
   }
 
   /** Moves focus to `target`; regions pass the element's settled rect, everything else is measured. */
   focus(target: FocusTarget | null): void {
     const element = target?.element ?? null;
-    if (element !== this.current) {
+    const moved = element !== this.current;
+    if (moved) {
       // An attribute rather than a class: React rewrites className on re-render and would drop it.
       this.current?.removeAttribute('data-focused');
       this.current = element;
@@ -129,6 +169,7 @@ export class FocusManager {
       (globalThis as { __playdeckFocusSerial?: number }).__playdeckFocusSerial = ++focusSerial;
     }
     this.placeRing(target?.rect ?? (element ? this.scrollIntoView(element) : undefined));
+    if (moved) this.notify();
   }
 
   private watchLayout(element: HTMLElement | null): void {
@@ -224,7 +265,12 @@ export class FocusManager {
       direction,
     );
     if (index < 0) return;
-    const target = this.resolve(candidates[index], direction);
+    // Entering a [data-focus-group] from outside lands on its [data-focus-entry], e.g. the selected tab.
+    let next = candidates[index];
+    const group = next.closest('[data-focus-group]');
+    const entry = group && !group.contains(from) ? group.querySelector<HTMLElement>('[data-focus-entry]') : null;
+    if (entry && candidates.includes(entry)) next = entry;
+    const target = this.resolve(next, direction);
     if (target) this.focus(target);
   }
 
@@ -233,7 +279,7 @@ export class FocusManager {
    * transition as the ring, so content and ring arrive together. Returns the element's settled rect.
    */
   private scrollIntoView(element: HTMLElement): Rect {
-    const rect = toRect(element.getBoundingClientRect());
+    const rect = settledRect(element);
     const container = element.closest<HTMLElement>('[data-scroll]');
     const content = container?.firstElementChild as HTMLElement | null;
     if (!container || !content) return rect;
@@ -256,12 +302,10 @@ export class FocusManager {
       content.style.transform = vertical ? `translate3d(0, ${-next}px, 0)` : `translate3d(${-next}px, 0, 0)`;
     }
 
-    // The content starts at the container's padding edge; its transform may be mid-transition, so
-    // its own rect cannot tell where it will settle.
-    const style = getComputedStyle(container);
-    const inset = vertical
-      ? parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop)
-      : parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    // The content's transform may be mid-transition, so its own rect cannot tell where it will settle.
+    // Its offset can (containers are positioned, see styles.css), and includes margins that collapse
+    // through it.
+    const inset = vertical ? container.clientTop + content.offsetTop : container.clientLeft + content.offsetLeft;
     const origin = (vertical ? box.top : box.left) + inset - next;
     const size = end - start;
     return vertical

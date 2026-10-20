@@ -104,7 +104,13 @@ export const Rows = memo(function Rows({ idPrefix, rows, onSelect, onContext, on
   );
 
   return (
-    <div className="rows-viewport" data-autofocus={autoFocus ? '' : undefined} ref={viewportRef}>
+    <div
+      className="rows-viewport"
+      data-autofocus={autoFocus ? '' : undefined}
+      data-hint-a="hint.open"
+      data-hint-x={onContext ? 'hint.options' : undefined}
+      ref={viewportRef}
+    >
       <div className="rows" ref={rowsElement}>
         {rows.map((row, r) => (
           <section className="row" key={row.id}>

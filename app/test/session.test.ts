@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlexAccount } from '../shared/bridge';
 import { WrongPinError, fetchHomeUsers } from '../src/core/plex/home';
-import { chooseHomeUser, restoreSession } from '../src/core/session';
+import { chooseHomeUser, restoreSession, resumeSession } from '../src/core/session';
 import { fakeFetch } from './support';
 
 const ACCOUNT: PlexAccount = { uuid: 'admin', username: 'admin', title: 'Admin', token: 'account-token' };
@@ -49,6 +49,17 @@ describe('Plex Home', () => {
     const admin = { uuid: 'admin', title: 'Admin', admin: true, restricted: false, guest: false, protected: false };
     expect((await chooseHomeUser(fake.context, ACCOUNT, admin)).token).toBe('account-token');
     expect(fake.calls).toHaveLength(0);
+  });
+});
+
+describe('resumeSession', () => {
+  it('resumes a remembered user from storage alone', () => {
+    const user = { uuid: 'kid', title: 'Kid', token: 'kid-token' };
+    expect(resumeSession({ account: ACCOUNT, user })).toEqual({ account: ACCOUNT, user, homeUsers: [] });
+  });
+
+  it('needs a remembered user', () => {
+    expect(resumeSession({ account: ACCOUNT })).toBeNull();
   });
 });
 

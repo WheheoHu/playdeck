@@ -1,3 +1,4 @@
+import type { LibrarySort } from '../../../shared/bridge';
 import { type PlexContext, type RequestOptions, requestJson } from './client';
 
 /** A server PlayDeck is connected to: where to reach it and the user's token for it. */
@@ -96,6 +97,8 @@ export interface MediaItem {
   leafCount?: number;
   viewedLeafCount?: number;
   childCount?: number;
+  /** The section (library) the item belongs to on its server. */
+  librarySectionId?: string;
   genres: string[];
   directors: string[];
   cast: CastMember[];
@@ -107,6 +110,11 @@ export interface LibrarySection {
   key: string;
   type: 'movie' | 'show';
   title: string;
+}
+
+/** Identifies a library across servers, as `${serverId}/${sectionKey}` (see Settings). */
+export function libraryId(of: LibrarySection | MediaItem): string {
+  return 'key' in of ? `${of.serverId}/${of.key}` : `${of.serverId}/${of.librarySectionId ?? ''}`;
 }
 
 type Tag = { tag?: string; role?: string; thumb?: string };
@@ -143,6 +151,7 @@ export interface RawMetadata {
   leafCount?: number;
   viewedLeafCount?: number;
   childCount?: number;
+  librarySectionID?: string | number;
   Genre?: Tag[];
   Director?: Tag[];
   Role?: Tag[];
@@ -269,6 +278,7 @@ export function parseItem(serverId: string, raw: RawMetadata): MediaItem {
     leafCount: raw.leafCount,
     viewedLeafCount: raw.viewedLeafCount,
     childCount: raw.childCount,
+    librarySectionId: str(raw.librarySectionID),
     genres: tags(raw.Genre),
     directors: tags(raw.Director),
     cast: (raw.Role ?? []).flatMap((role) => (role.tag ? [{ name: role.tag, role: role.role, thumb: role.thumb }] : [])),
@@ -319,18 +329,35 @@ export async function fetchSections(context: PlexContext, server: LibraryServer,
   );
 }
 
+/** Plex sort keys; shows order "date added" by their newest episode, as Plex Web does. */
+function sortParam(sort: LibrarySort, type: LibrarySection['type']): string {
+  switch (sort) {
+    case 'title':
+      return 'titleSort';
+    case 'added':
+      return type === 'show' ? 'episode.addedAt:desc' : 'addedAt:desc';
+    case 'released':
+      return 'originallyAvailableAt:desc';
+    case 'rating':
+      return 'audienceRating:desc';
+    case 'watched':
+      return 'lastViewedAt:desc';
+  }
+}
+
 export async function fetchSectionPage(
   context: PlexContext,
   server: LibraryServer,
   section: LibrarySection,
   start: number,
   size: number,
+  sort: LibrarySort = 'title',
   signal?: AbortSignal,
 ): Promise<{ items: MediaItem[]; totalSize: number }> {
   const type = section.type === 'movie' ? 1 : 2;
   const params = new URLSearchParams({
     type: String(type),
-    sort: 'titleSort',
+    sort: sortParam(sort, section.type),
     'X-Plex-Container-Start': String(start),
     'X-Plex-Container-Size': String(size),
   });

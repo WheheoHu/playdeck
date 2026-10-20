@@ -201,11 +201,13 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | Right stick | Fast scroll |
 | A / Enter | Select |
 | B / Esc / Backspace | Back |
-| X | Context menu (watched state, version, file info) |
-| Y | Search |
-| LB / RB | Switch top tabs (Home, Libraries, Search, Settings) |
+| X | Context menu (watched state, version, file info); Delete on the search keyboard |
+| Y | Search; Sort on a library page |
+| LB / RB | Switch top tabs (Home, Libraries, Search) |
 | LT / RT | Page up and down in grids, or jump by letter |
 | Menu (☰) | Settings |
+
+- A bar along the bottom of the screen shows, SteamOS style, the buttons that do something for the focused element and its screen. LB and RB glyphs flank the top tabs.
 
 ### 7.3 Playback OSD (mpv Lua, defaults, all remappable)
 
@@ -259,6 +261,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 
 - Settings editable in the UI:
   - accounts and servers;
+  - which libraries feed Home, and each library's sort order;
   - default audio and subtitle languages;
   - subtitle style and size;
   - HDR subtitle and OSD brightness;
@@ -318,7 +321,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - `test/` holds unit tests (`npm test`). `test/live/` holds tests against the real account in `.env` (`npm run test:live`); they are never part of `npm test`.
 - **Storage** is in `~/.config/PlayDeck/`:
   - `settings.json`: user-editable;
-  - `credentials.json`: mode 0600, holding the account and current-user tokens;
+  - `credentials.json`: mode 0600, holding the account and current-user tokens (and, since 13.3, the last Home users and server list);
   - `identity.json`: the X-Plex-Client-Identifier.
 
   There is no OS keyring in Gaming Mode, so tokens rely on file permissions.
@@ -356,9 +359,9 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - The hero (art, clear logo or title, facts, summary) updates 200 ms after focus settles and re-renders on its own, so moving through rows never re-renders the rows.
 - **Libraries.**
   - Movie and TV sections are listed per server.
-  - A section opens as a virtualized grid of 7 columns. Pages of 63 items are fetched on demand, with one page of prefetch. LT/RT jump a screen.
+  - A section opens as a virtualized grid (6 columns since 13.3). Pages of 48 items are fetched on demand, with one page of prefetch. LT/RT jump a screen.
 - **Details.**
-  - One page serves movies and shows. It has season tabs and an episode list; an episode opens an overlay.
+  - One page serves movies and shows. Shows have season tabs and episodes (laid out horizontally since 13.3).
   - Opening an episode from a row lands on its show, with its season selected and the episode focused.
   - File info lists every version, file, video, audio and subtitle stream.
   - Play is a placeholder until M3.
@@ -382,8 +385,38 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - Result on the Deck: rAF p95 11.2 ms with 2 drops in 1,721 frames. While animations ran, gamescope measured p95 11.11 ms with 3 single-vsync misses in 755 presents (0.4%). All of them came at a tab switch or when a new page mounted.
   - Development tools: `devctl.py` gained `keys`, `perf-start`/`perf-stop` and `trace-start`/`trace-stop` (Chromium tracing). `app/scripts/trace-summary.py` lists the longest tasks.
 - **Known gaps.**
-  - Home includes every library the server returns (Plex Web does the same); a "libraries on Home" setting is future work.
   - Text entry for manual servers and Chinese search both wait on the Steam on-screen keyboard.
+
+### 13.3 Improvements before M3
+
+- **Startup.**
+  - `credentials.json` also keeps the Plex Home users and, per user, the server list with its access tokens.
+  - A remembered user starts from them at once: the shell shows about 0.3 s after page load and Home's posters about 0.7 s after, down from about 12 s.
+  - plex.tv is still checked in the background. The account and Home users requests run in parallel, and a rejected token still signs out. The fresh server list only adds, drops or reconnects servers that changed.
+  - Before this, startup waited on plex.tv in sequence (`/user` took 5.8 s, then `/home/users` 1.6 s, then `/resources`) before any connection probe ran.
+- **Home.**
+  - Row labels are 24 px.
+  - Settings → "Libraries on Home" hides chosen libraries (`homeHiddenLibraries`, as `serverId/sectionKey`). Items are filtered by `librarySectionID` before the merge, so hidden libraries do not use up a row's length.
+- **Libraries.**
+  - Library tiles have 24 px names.
+  - The grid has 6 columns of 168×252 posters, centered, with 17 px titles. Two full rows fit above the hints bar.
+  - Y, or the button at the top right, picks the sort order: title, date added (by newest episode for shows), release date, rating or last watched. The order is saved per library in `librarySort`.
+- **Show page.**
+  - Episodes are a horizontal, windowed strip of 288×162 stills, so long seasons are never mounted whole.
+  - The focused episode's title, facts and summary sit at the top in a fixed box, updated 120 ms after focus settles.
+  - A plays the episode (a placeholder until M3) and X opens its menu. Nothing on the page scrolls vertically.
+  - Moving into the season tabs lands on the selected season (`data-focus-group` / `data-focus-entry`).
+- **Focus engine.**
+  - The ring was 12 px above Libraries tiles. A heading's margin collapsed through the scroll content, so the content did not start at the container's padding edge.
+  - The settled position now comes from the content's `offsetTop`; `[data-scroll]` containers are positioned so that they are its offset parent.
+  - Measured elements are sized for their focus scale, read from `--focus-scale`.
+  - Spatial navigation:
+    - Candidates in the nearest row ahead beat any farther row, so a narrow row of tabs is never skipped for a wider row behind it.
+    - Left and right stay within the row.
+- **Performance.**
+  - `perf.py --cold` clears the HTTP cache first, so every poster and still loads during the run. Keys repeat every 90 ms, like a held D-pad.
+  - The script now also covers the Libraries tab, the show page's episode strip and a season switch.
+  - Result on the Deck: rAF p95 11.2 ms with 1 drop in 2,915 frames. gamescope measured p95 11.11 ms with 7 single-vsync misses in 1,193 presents (0.6%).
 
 M0–M3 running on the Deck in dev mode is the MVP. Release 0.1 is the MVP plus M4. M5 follows when a suitable 4K HDR display is available for testing; until then, tests that need an external display are skipped.
 

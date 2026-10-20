@@ -9,14 +9,21 @@ export const STRIDE_X = POSTER_W + GAP;
 /** Scale of a focused card; the ring is sized for the scaled card. */
 export const FOCUS_SCALE = 1.06;
 
-export const ROW_LABEL_H = 34;
+export const ROW_LABEL_H = 46;
 export const ROW_H = ROW_LABEL_H + POSTER_H + 30;
 /** Cards to the left of the focused card before a row starts scrolling. */
 export const ROW_LEAD = 2;
 
-export const GRID_COLS = 7;
-export const GRID_CAPTION_H = 52;
-export const GRID_ROW_H = POSTER_H + GRID_CAPTION_H + 12;
+/** Library grid: fewer, larger posters than the rows, two full rows above the hints bar. */
+export const GRID_COLS = 6;
+export const GRID_POSTER_W = 168;
+export const GRID_POSTER_H = 252;
+export const GRID_GAP = 24;
+/** Centers the grid: (1280 - 6 * 168 - 5 * 24) / 2. */
+export const GRID_PAD_X = 76;
+export const GRID_STRIDE_X = GRID_POSTER_W + GRID_GAP;
+export const GRID_CAPTION_H = 60;
+export const GRID_ROW_H = GRID_POSTER_H + GRID_CAPTION_H + 12;
 
 /** Logical pixels to device pixels, for requesting images at native resolution. */
 export const imageScale = () => window.devicePixelRatio || 1;

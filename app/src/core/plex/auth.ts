@@ -1,5 +1,5 @@
 import type { PlexAccount } from '../../../shared/bridge';
-import { type PlexContext, PLEX_TV, PRODUCT, PlexHttpError, requestJson } from './client';
+import { type PlexContext, PLEX_TV, PRODUCT, PlexHttpError, requestAccountApi, requestJson } from './client';
 
 export const LINK_URL = 'https://plex.tv/link';
 
@@ -64,7 +64,7 @@ interface UserResponse {
 
 /** Validates an account token and returns the account it belongs to. */
 export async function fetchAccount(context: PlexContext, token: string): Promise<PlexAccount> {
-  const user = await requestJson<UserResponse>(context, `${PLEX_TV}/user`, { token });
+  const user = await requestAccountApi<UserResponse>(context, '/user', { token });
   const username = user.username ?? user.title ?? '';
   return { uuid: user.uuid, username, title: user.title || username, thumb: user.thumb, token };
 }

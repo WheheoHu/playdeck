@@ -12,15 +12,23 @@ export interface ManualServer {
   url: string;
 }
 
+export type LibrarySort = 'title' | 'added' | 'released' | 'rating' | 'watched';
+
 /** User-editable settings, stored as human-readable JSON. */
 export interface Settings {
   language: LanguageSetting;
   manualServers: ManualServer[];
+  /** Libraries whose items stay off Home, as `${serverId}/${sectionKey}`. */
+  homeHiddenLibraries: string[];
+  /** Grid order per library, keyed like homeHiddenLibraries. */
+  librarySort: Record<string, LibrarySort>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   language: 'system',
   manualServers: [],
+  homeHiddenLibraries: [],
+  librarySort: {},
 };
 
 export interface PlexAccount {
@@ -39,10 +47,46 @@ export interface PlexUserSession {
   token: string;
 }
 
-/** Secrets, stored separately from settings with owner-only permissions. */
+export interface HomeUser {
+  uuid: string;
+  title: string;
+  thumb?: string;
+  admin: boolean;
+  restricted: boolean;
+  guest: boolean;
+  /** A PIN is required to switch to this user. */
+  protected: boolean;
+}
+
+export interface PlexConnection {
+  uri: string;
+  protocol: 'http' | 'https';
+  address: string;
+  port: number;
+  local: boolean;
+  relay: boolean;
+  ipv6: boolean;
+}
+
+export interface PlexServer {
+  name: string;
+  clientIdentifier: string;
+  accessToken: string;
+  owned: boolean;
+  productVersion?: string;
+  connections: PlexConnection[];
+}
+
+/**
+ * Secrets, stored separately from settings with owner-only permissions. Besides the tokens it keeps
+ * what plex.tv last said, so a returning user gets in without waiting for plex.tv.
+ */
 export interface Credentials {
   account?: PlexAccount;
   user?: PlexUserSession;
+  homeUsers?: HomeUser[];
+  /** The user's servers with their access tokens. */
+  servers?: { userUuid: string; list: PlexServer[] };
 }
 
 export interface RememberedConnection {

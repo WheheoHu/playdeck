@@ -1,15 +1,7 @@
+import type { HomeUser } from '../../../shared/bridge';
 import { type PlexContext, CLIENTS_API, PlexHttpError, requestAccountApi, requestJson } from './client';
 
-export interface HomeUser {
-  uuid: string;
-  title: string;
-  thumb?: string;
-  admin: boolean;
-  restricted: boolean;
-  guest: boolean;
-  /** A PIN is required to switch to this user. */
-  protected: boolean;
-}
+export type { HomeUser };
 
 interface HomeUsersResponse {
   users?: {

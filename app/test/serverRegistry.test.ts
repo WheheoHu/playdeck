@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { PlexServer } from '../shared/bridge';
+import { parseServers } from '../src/core/plex/servers';
 import { type ServerEntry, connectServers, libraryServerOf } from '../src/core/serverRegistry';
 import { fakeFetch } from './support';
 
@@ -59,6 +61,53 @@ describe('connectServers', () => {
     const urls = updates.flatMap((status) => (status.state === 'online' ? [status.connection.url] : [status.state]));
     expect(urls).toEqual(['connecting', 'https://wan.plex.direct:32400', 'https://lan.plex.direct:32400']);
     expect(libraryServerOf(entries[0])?.baseUrl).toBe('https://lan.plex.direct:32400');
+  });
+
+  it('starts from the cached list without waiting for plex.tv, then applies its answer', async () => {
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    const fake = fakeFetch([
+      ['GET', /\/resources\?/, async () => (await answered, { body: RESOURCES })],
+      ['GET', /^https:\/\/wan\.plex\.direct:32400\/$/, () => ({ body: IDENTITY })],
+      ['GET', /./, () => new TypeError('unreachable')],
+    ]);
+    const gone: PlexServer = { name: 'Old', clientIdentifier: 'gone', accessToken: 't', owned: false, connections: [] };
+    const snapshots: string[][] = [];
+    let stored: PlexServer[] | undefined;
+    const done = connectServers(fake.context, 'user-token', {
+      manual: [],
+      remembered: { 'machine-1': { url: 'https://wan.plex.direct:32400', networkClass: 'remote' } },
+      cached: [...parseServers(RESOURCES), gone],
+      onChange: (list) => snapshots.push(list.map((entry) => `${entry.server.clientIdentifier}:${entry.status.state}`)),
+      onServers: (servers) => {
+        stored = servers;
+      },
+    });
+    await vi.waitFor(() => expect(snapshots.at(-1)).toContain('machine-1:online'));
+    expect(stored).toBeUndefined();
+
+    answer();
+    const entries = await done;
+    expect(entries.map((entry) => entry.server.clientIdentifier)).toEqual(['machine-1']);
+    expect(libraryServerOf(entries[0])?.baseUrl).toBe('https://wan.plex.direct:32400');
+    expect(stored?.map((server) => server.clientIdentifier)).toEqual(['machine-1']);
+  });
+
+  it('keeps the cached list when plex.tv is unreachable', async () => {
+    const fake = fakeFetch([
+      ['GET', /\/resources\?/, () => new TypeError('offline')],
+      ['GET', /^https:\/\/wan\.plex\.direct:32400\/$/, () => ({ body: IDENTITY })],
+      ['GET', /./, () => new TypeError('unreachable')],
+    ]);
+    const entries = await connectServers(fake.context, 'user-token', {
+      manual: [],
+      remembered: {},
+      cached: parseServers(RESOURCES),
+      onChange: () => {},
+    });
+    expect(libraryServerOf(entries[0])?.baseUrl).toBe('https://wan.plex.direct:32400');
   });
 
   it('keeps a working remembered connection when the LAN is unreachable', async () => {

@@ -4,6 +4,7 @@ import { type MediaItem, searchServer } from '../../core/plex/library';
 import { useApp } from '../AppContext';
 import { type Row, Rows } from '../components/Rows';
 import { FocusButton } from '../focus/react';
+import type { Action } from '../input';
 import { useNav } from '../nav';
 import { useResource } from '../resource';
 import { useServers } from '../servers';
@@ -62,6 +63,12 @@ export function SearchScreen() {
     });
   }, [results.data, t]);
 
+  const deleteOnX = (action: Action) => {
+    if (action !== 'context') return false;
+    setQuery((value) => value.slice(0, -1));
+    return true;
+  };
+
   const status =
     term.length < MIN_LENGTH
       ? t('search.hint')
@@ -75,19 +82,25 @@ export function SearchScreen() {
     <div className="search">
       <div className="search-keyboard">
         <div className="search-query">{query || <span className="muted">{t('search.placeholder')}</span>}</div>
-        <div className="keyboard-grid">
+        <div className="keyboard-grid" data-hint-x="hint.delete">
           {KEYS.map((key, index) => (
-            <FocusButton key={key} className="key" autoFocus={index === 0} onSelect={() => setQuery((value) => value + key)}>
+            <FocusButton
+              key={key}
+              className="key"
+              autoFocus={index === 0}
+              onSelect={() => setQuery((value) => value + key)}
+              onAction={deleteOnX}
+            >
               {key}
             </FocusButton>
           ))}
-          <FocusButton className="key key-wide" onSelect={() => setQuery((value) => `${value} `)}>
+          <FocusButton className="key key-wide" onSelect={() => setQuery((value) => `${value} `)} onAction={deleteOnX}>
             {t('search.space')}
           </FocusButton>
-          <FocusButton className="key key-wide" onSelect={() => setQuery((value) => value.slice(0, -1))}>
+          <FocusButton className="key key-wide" onSelect={() => setQuery((value) => value.slice(0, -1))} onAction={deleteOnX}>
             ⌫
           </FocusButton>
-          <FocusButton className="key key-wide" onSelect={() => setQuery('')}>
+          <FocusButton className="key key-wide" onSelect={() => setQuery('')} onAction={deleteOnX}>
             {t('search.clear')}
           </FocusButton>
         </div>

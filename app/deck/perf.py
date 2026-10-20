@@ -27,22 +27,35 @@ FOCUS_ANIMATION_MS = 140
 PAGE_ANIMATION_MS = 200
 SAME_PRESENT_NS = 2_000_000
 
-# (phase, keys, interval ms). Intervals between 100 and 120 ms keep animations overlapping.
+# (phase, keys, interval ms). 90 ms is the gamepad's key repeat (src/ui/input.ts), so held D-pad
+# scrolling overlaps animations the way a user's does. Expects the Libraries tab to list Anime Movies,
+# Movies, Anime, TV Shows first, and TV Shows to open on a show with several seasons.
 SCRIPT = [
-    ("home-rows", ["Right"] * 15, 120),
+    ("home-rows", ["Right"] * 12, 90),
     ("home-rows", ["Down"], 400),
-    ("home-rows", ["Left"] * 15, 120),
+    ("home-rows", ["Right"] * 12, 90),
+    ("home-rows", ["Left"] * 12, 120),
     ("home-rows", ["Down"], 400),
-    ("home-rows", ["Right"] * 15, 120),
+    ("home-rows", ["Right"] * 12, 90),
     ("home-rows", ["Up", "Up"], 300),
-    ("to-library", ["]"], 1500),
-    ("to-library", ["Right"], 400),
-    ("to-library", ["Return"], 3000),
-    ("grid", ["Down"] * 12, 110),
+    ("libraries", ["]"], 1500),
+    ("libraries", ["Right", "Right", "Left", "Down", "Up"], 250),
+    ("libraries", ["Return"], 3000),
+    ("grid", ["Down"] * 10, 90),
     ("grid", ["Right"] * 3, 120),
     ("grid", ["PageDown"] * 2, 600),
-    ("grid", ["Up"] * 12, 100),
-    ("back-home", ["Escape"], 800),
+    ("grid", ["Up"] * 14, 90),
+    ("grid", ["Escape"], 800),
+    ("show", ["Right", "Right"], 300),
+    ("show", ["Return"], 3000),
+    ("show", ["Return"], 3000),
+    ("show", ["Right"] * 8, 90),
+    ("show", ["Left"] * 8, 120),
+    ("show", ["Up", "Right"], 300),
+    ("show", ["Return"], 2000),
+    ("show", ["Down"], 400),
+    ("show", ["Right"] * 6, 90),
+    ("back-home", ["Escape", "Escape"], 800),
     ("back-home", ["["], 1500),
     ("back-home", ["Right"] * 8, 120),
 ]
@@ -113,6 +126,9 @@ def judge(intervals_ms, period_ms):
 def main():
     hz = refresh_hz()
     period_ms = 1000 / hz
+    if "--cold" in sys.argv:
+        # Every poster and still is fetched and decoded during the run, as on a first visit.
+        control({"cmd": "clear-cache"})
     sampler = PresentSampler(app_id())
     sampler.start()
     time.sleep(0.5)

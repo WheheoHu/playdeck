@@ -44,7 +44,7 @@ export function FileInfo({ item, onClose }: { item: MediaItem; onClose: () => vo
   const versions = full.data?.media ?? [];
 
   return (
-    <FocusScope className="overlay" onBack={onClose}>
+    <FocusScope className="overlay" onBack={onClose} hints={{ b: 'hint.close' }}>
       <div className="info-panel" data-scroll="y">
         <div className="scroll-content">
           <h2>{t('info.title')}</h2>
