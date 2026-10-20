@@ -1,0 +1,22 @@
+# Reference checkouts used during research
+.research/
+
+# Dependencies and build output
+node_modules/
+dist/
+dist-electron/
+__pycache__/
+out/
+build/
+.flatpak-builder/
+repo/
+*.flatpak
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store

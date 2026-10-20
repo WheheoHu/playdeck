@@ -1,0 +1,176 @@
+/* Sizes mirror src/layout.ts. Only transform and opacity are ever animated. */
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  --bg: #0b0b0f;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --focus-ms: 140ms;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: #f2f2f5;
+}
+
+.message {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 24px;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  visibility: visible;
+  transition: opacity 200ms ease, transform 200ms ease, visibility 0s;
+}
+
+.page.hidden {
+  opacity: 0;
+  transform: translate3d(48px, 0, 0);
+  visibility: hidden;
+  transition: opacity 200ms ease, transform 200ms ease, visibility 0s 200ms;
+}
+
+.hero {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 450px;
+}
+
+.hero img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.hero img.visible {
+  opacity: 1;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, var(--bg) 8%, rgb(11 11 15 / 60%) 45%, rgb(11 11 15 / 10%) 100%),
+    linear-gradient(to right, rgb(11 11 15 / 85%), transparent 60%);
+}
+
+.hero-title {
+  position: absolute;
+  z-index: 1;
+  left: 48px;
+  top: 200px;
+  max-width: 640px;
+  font-size: 34px;
+  font-weight: 700;
+  text-shadow: 0 2px 12px rgb(0 0 0 / 50%);
+}
+
+.rows-viewport {
+  position: absolute;
+  inset: calc(330px - 12px) 0 0 0;
+  padding-top: 12px;
+  overflow: hidden;
+}
+
+.rows,
+.track,
+.grid-content,
+.focus-ring {
+  transition: transform var(--focus-ms) var(--ease);
+  will-change: transform;
+}
+
+.row {
+  height: 270px;
+}
+
+.row-label {
+  height: 34px;
+  padding-left: 48px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 34px;
+  opacity: 0.85;
+}
+
+.track,
+.grid-row {
+  display: flex;
+  gap: 16px;
+  padding-left: 48px;
+}
+
+.card {
+  flex: none;
+  width: 140px;
+  height: 210px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #1b1b22;
+  transition: transform var(--focus-ms) var(--ease);
+}
+
+.card.focused {
+  transform: scale(1.06);
+}
+
+.card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.card img.loaded {
+  opacity: 1;
+}
+
+.focus-ring {
+  position: absolute;
+  z-index: 10;
+  left: -9px;
+  top: -11px;
+  width: 158px;
+  height: 232px;
+  box-sizing: border-box;
+  border: 3px solid #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 55%);
+  pointer-events: none;
+}
+
+.grid-header {
+  position: absolute;
+  left: 48px;
+  top: 28px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.grid-viewport {
+  position: absolute;
+  inset: calc(96px - 12px) 0 0 0;
+  overflow: hidden;
+}
+
+.grid-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+}

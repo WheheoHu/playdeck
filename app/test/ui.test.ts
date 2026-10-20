@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest';
+import { LOCALES, resolveLocale, translator } from '../src/core/i18n';
+import { en } from '../src/core/i18n/en';
+import { pickNext, type Rect } from '../src/ui/focus/spatial';
+
+describe('i18n', () => {
+  it('has every English message in every locale, with the same placeholders', () => {
+    for (const [locale, { messages }] of Object.entries(LOCALES)) {
+      for (const key of Object.keys(en) as (keyof typeof en)[]) {
+        const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+        expect(messages[key], `${locale} ${key}`).toBeTruthy();
+        expect(placeholders(messages[key]), `${locale} ${key}`).toEqual(placeholders(en[key]));
+      }
+    }
+  });
+
+  it('resolves the system language and fills placeholders', () => {
+    expect(resolveLocale('system', 'zh-Hans-CN')).toBe('zh-CN');
+    expect(resolveLocale('system', 'de-DE')).toBe('en');
+    expect(resolveLocale('en', 'zh-CN')).toBe('en');
+    expect(translator('zh-CN')('servers.local', { latency: 12 })).toBe('局域网 · 12 ms');
+  });
+});
+
+const box = (left: number, top: number, width = 100, height = 50): Rect => ({
+  left,
+  top,
+  right: left + width,
+  bottom: top + height,
+});
+
+describe('spatial navigation', () => {
+  //  [a] [b] [c]
+  //  [d]     [e]
+  const a = box(0, 0);
+  const b = box(120, 0);
+  const c = box(240, 0);
+  const d = box(0, 80);
+  const e = box(240, 80);
+  const all = [a, b, c, d, e];
+
+  it('moves to the nearest neighbour in a row', () => {
+    expect(pickNext(a, all, 'right')).toBe(1);
+    expect(pickNext(b, all, 'left')).toBe(0);
+  });
+
+  it('prefers an aligned element over a closer diagonal one', () => {
+    expect(pickNext(c, all, 'down')).toBe(4);
+    expect(pickNext(d, all, 'up')).toBe(0);
+  });
+
+  it('falls back to a diagonal element when nothing is aligned', () => {
+    expect(pickNext(b, all, 'down')).toBe(3);
+  });
+
+  it('stops at the edge', () => {
+    expect(pickNext(c, all, 'right')).toBe(-1);
+    expect(pickNext(a, all, 'up')).toBe(-1);
+  });
+});
