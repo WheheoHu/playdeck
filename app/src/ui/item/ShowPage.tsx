@@ -1,13 +1,26 @@
-import { forwardRef, memo, useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  type MutableRefObject,
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { flushSync } from 'react-dom';
 import { episodeLabel, formatDuration } from '../../core/format';
 import { progressOf } from '../../core/home';
 import { type MediaItem, fetchChildren, imageUrl } from '../../core/plex/library';
 import { useApp } from '../AppContext';
+import { Glyph } from '../components/Hints';
 import { ItemHeading } from '../components/ItemHeading';
 import { Poster } from '../components/Poster';
 import type { FocusTarget } from '../focus/manager';
 import { FocusButton, useFocusManager, useRegion } from '../focus/react';
+import type { Action } from '../input';
 import { PAD_X, focusedCardRect, imageScale } from '../layout';
 import { type Route, isWatched, useNav } from '../nav';
 import { useResource } from '../resource';
@@ -26,6 +39,8 @@ const BLEED = 12;
 const INFO_DEBOUNCE_MS = 120;
 
 type ItemRoute = Extract<Route, { kind: 'item' }>;
+
+const EMPTY: MediaItem[] = [];
 
 /** The first episode not yet finished, so a season opens where the viewer left off. */
 function nextUp(episodes: MediaItem[]): number {
@@ -120,7 +135,20 @@ function EpisodeStrip({ seasonKey, episodes, initial, onFocusEpisode }: StripPro
   const track = useRef<HTMLDivElement>(null);
   const index = useRef(initial);
   const season = useRef<string | null>(null);
+  /** Whether focus is in the strip; stays set while a season change replaces the focused card. */
+  const owned = useRef(false);
+  /** Focus waits for the cards of a window that moved with a new season. */
+  const pending = useRef(false);
   const [windowStart, setWindowStart] = useState(() => Math.max(0, initial - STRIP_LEAD - STRIP_OVERSCAN));
+
+  useEffect(() => {
+    const sync = () => {
+      const focused = manager.focused;
+      owned.current = Boolean(focused && viewport.current?.contains(focused));
+    };
+    sync();
+    return manager.subscribe(sync);
+  }, [manager]);
 
   /** `fromInput` is false inside React effects, where cards cannot be flushed synchronously. */
   function settle(fromInput = true): FocusTarget | null {
@@ -168,11 +196,17 @@ function EpisodeStrip({ seasonKey, episodes, initial, onFocusEpisode }: StripPro
       season.current = seasonKey;
       index.current = initial;
     }
-    const focused = manager.focused;
-    const inside = Boolean(focused?.isConnected && viewport.current?.contains(focused));
     const target = settle(false);
-    if (inside) manager.focus(target);
+    if (!owned.current) return;
+    if (target) manager.focus(target);
+    else pending.current = true;
   }, [seasonKey, episodes, initial]);
+
+  useLayoutEffect(() => {
+    if (!pending.current) return;
+    pending.current = false;
+    manager.focus(settle(false));
+  }, [windowStart]);
 
   const viewportRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -200,12 +234,21 @@ function EpisodeStrip({ seasonKey, episodes, initial, onFocusEpisode }: StripPro
   );
 }
 
-export function ShowPage({ show, route }: { show: MediaItem; route: ItemRoute }) {
+interface ShowPageProps {
+  show: MediaItem;
+  route: ItemRoute;
+  /** Set to the page's handler for actions no focused element takes (LB/RB switch seasons). */
+  actions: MutableRefObject<((action: Action) => boolean) | null>;
+}
+
+export function ShowPage({ show, route, actions }: ShowPageProps) {
   const { plex, t } = useApp();
   const { byId } = useServers();
   const nav = useNav();
+  const manager = useFocusManager();
   const server = byId(show.serverId);
   const info = useRef<InfoHandle>(null);
+  const tabs = useRef<HTMLDivElement>(null);
   const seasons = useResource(server ? `children:${show.serverId}:${show.ratingKey}` : null, () =>
     fetchChildren(plex, server!, show.ratingKey),
   );
@@ -217,12 +260,37 @@ export function ShowPage({ show, route }: { show: MediaItem; route: ItemRoute })
   const episodes = useResource(server && active ? `children:${show.serverId}:${active}` : null, () =>
     fetchChildren(plex, server!, active!),
   );
-  const list = useMemo(() => episodes.data ?? [], [episodes.data]);
+  // The previous season stays on screen while the next one loads, so the strip (and focus in it)
+  // survives a season switch.
+  const shown = useRef<{ season: string; list: MediaItem[] } | null>(null);
+  if (active && episodes.data && (shown.current?.season !== active || shown.current.list !== episodes.data)) {
+    shown.current = { season: active, list: episodes.data };
+  }
+  const shownSeason = shown.current?.season;
+  const list = shown.current?.list ?? EMPTY;
   const initial = useMemo(() => {
-    const jump = route.episode && active === route.season ? list.findIndex((e) => e.ratingKey === route.episode) : -1;
+    const jump =
+      route.episode && shownSeason === route.season ? list.findIndex((e) => e.ratingKey === route.episode) : -1;
     return jump >= 0 ? jump : nextUp(list);
-  }, [list, active, route.episode, route.season]);
+  }, [list, shownSeason, route.episode, route.season]);
   const onFocusEpisode = useCallback((episode: MediaItem) => info.current?.show(episode), []);
+
+  actions.current = (action) => {
+    if (action !== 'previous-tab' && action !== 'next-tab') return false;
+    const all = seasons.data ?? [];
+    const next = all[all.findIndex((season) => season.ratingKey === active) + (action === 'next-tab' ? 1 : -1)];
+    if (next) setChosen(next.ratingKey);
+    return all.length > 1;
+  };
+
+  // A focused season tab follows the selection; otherwise the tabs just scroll to it.
+  useLayoutEffect(() => {
+    const selected = tabs.current?.querySelector<HTMLElement>('[data-focus-entry]');
+    if (!selected) return;
+    const focused = manager.focused;
+    if (focused && focused !== selected && tabs.current!.contains(focused)) manager.focus({ element: selected });
+    else manager.reveal(selected);
+  }, [active, seasons.data, manager]);
 
   const upNext = list[initial];
   const label = upNext && episodeLabel(upNext);
@@ -244,23 +312,27 @@ export function ShowPage({ show, route }: { show: MediaItem; route: ItemRoute })
         </div>
       </div>
       {seasons.data && seasons.data.length > 1 && (
-        <div className="season-tabs" data-scroll="x" data-focus-group="">
-          <div className="scroll-content row-content">
-            {seasons.data.map((season) => (
-              <FocusButton
-                key={season.ratingKey}
-                className={season.ratingKey === active ? 'season-tab selected' : 'season-tab'}
-                data-focus-entry={season.ratingKey === active ? '' : undefined}
-                onSelect={() => setChosen(season.ratingKey)}
-              >
-                {season.title}
-              </FocusButton>
-            ))}
+        <div className="season-bar">
+          <Glyph button="lb" />
+          <div className="season-tabs" data-scroll="x" data-focus-group="" ref={tabs}>
+            <div className="scroll-content row-content">
+              {seasons.data.map((season) => (
+                <FocusButton
+                  key={season.ratingKey}
+                  className={season.ratingKey === active ? 'season-tab selected' : 'season-tab'}
+                  data-focus-entry={season.ratingKey === active ? '' : undefined}
+                  onSelect={() => setChosen(season.ratingKey)}
+                >
+                  {season.title}
+                </FocusButton>
+              ))}
+            </div>
           </div>
+          <Glyph button="rb" />
         </div>
       )}
-      {active && list.length > 0 ? (
-        <EpisodeStrip seasonKey={active} episodes={list} initial={initial} onFocusEpisode={onFocusEpisode} />
+      {shownSeason && list.length > 0 ? (
+        <EpisodeStrip seasonKey={shownSeason} episodes={list} initial={initial} onFocusEpisode={onFocusEpisode} />
       ) : (
         <p className="strip-message muted">{episodes.loading || seasons.loading ? t('app.loading') : ''}</p>
       )}

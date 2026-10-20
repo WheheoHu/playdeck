@@ -1,9 +1,11 @@
+import { useCallback, useRef } from 'react';
 import { qualityBadges } from '../../core/format';
 import { fetchItem } from '../../core/plex/library';
 import { useApp } from '../AppContext';
 import { Backdrop } from '../components/Backdrop';
 import { ItemHeading } from '../components/ItemHeading';
 import { FocusScope } from '../focus/react';
+import type { Action } from '../input';
 import { type Route, useNav } from '../nav';
 import { useResource } from '../resource';
 import { useServers } from '../servers';
@@ -19,14 +21,16 @@ export function ItemPage({ route }: { route: Extract<Route, { kind: 'item' }> })
     fetchItem(plex, server!, route.ratingKey),
   );
   const item = resource.data;
+  const pageAction = useRef<((action: Action) => boolean) | null>(null);
+  const onAction = useCallback((action: Action) => pageAction.current?.(action) ?? false, []);
 
   return (
-    <FocusScope className="page item-page" onBack={nav.pop}>
+    <FocusScope className="page item-page" onBack={nav.pop} onAction={onAction}>
       <Backdrop item={item ?? null} className="page-backdrop" />
       {!item ? (
         <p className="page-message muted">{resource.error ? t('item.loadFailed') : t('app.loading')}</p>
       ) : item.type === 'show' ? (
-        <ShowPage show={item} route={route} />
+        <ShowPage show={item} route={route} actions={pageAction} />
       ) : (
         <div className="item-body">
           <ItemHeading item={item} badges={qualityBadges(item)} />

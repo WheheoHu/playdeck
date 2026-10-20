@@ -184,6 +184,11 @@ export class FocusManager {
     return this.current;
   }
 
+  /** Scrolls an element's [data-scroll] container to show it, without moving focus. */
+  reveal(element: HTMLElement): void {
+    this.scrollIntoView(element);
+  }
+
   /** Re-places the ring, e.g. after a region re-laid out its focused element. */
   refresh(target?: FocusTarget): void {
     if (target && target.element === this.current) this.placeRing(target.rect);
@@ -288,25 +293,39 @@ export class FocusManager {
     const box = container.getBoundingClientRect();
     const contentBox = content.getBoundingClientRect();
     const offset = this.scrollOffsets.get(container) ?? 0;
+    // Element edges relative to the content, which moves with its transform.
     const start = vertical ? rect.top - contentBox.top : rect.left - contentBox.left;
     const end = vertical ? rect.bottom - contentBox.top : rect.right - contentBox.left;
-    const viewport = vertical ? box.height : box.width;
-    const total = vertical ? content.scrollHeight : content.scrollWidth;
+    // Everything below is in the container's padding box. The content's transform may be
+    // mid-transition, so its rect cannot tell where it will settle; its offset can (containers are
+    // positioned, see styles.css), and includes margins that collapse through it.
+    const lead = vertical ? content.offsetTop : content.offsetLeft;
+    const viewport = vertical ? container.clientHeight : container.clientWidth;
+    const style = getComputedStyle(container);
+    const trailingPadding = parseFloat(vertical ? style.paddingBottom : style.paddingRight);
+    // Layout size: scroll sizes would grow with the focused element's scale-up.
+    const total = vertical ? content.offsetHeight : content.offsetWidth;
 
+    // The first and last rows of focusables scroll all the way, revealing headings and notes around them.
+    const items = content.querySelectorAll<HTMLElement>('[data-focusable]');
+    const inLineWith = (other: HTMLElement | undefined) => {
+      if (!other) return false;
+      const r = other.getBoundingClientRect();
+      return vertical ? r.top < rect.bottom && r.bottom > rect.top : r.left < rect.right && r.right > rect.left;
+    };
+    const max = Math.max(0, lead + total + trailingPadding - viewport);
     let next = offset;
-    if (start - next < SCROLL_MARGIN) next = start - SCROLL_MARGIN;
-    if (end - next > viewport - SCROLL_MARGIN) next = end - viewport + SCROLL_MARGIN;
-    next = Math.max(0, Math.min(next, Math.max(0, total - viewport)));
+    if (lead + start - next < SCROLL_MARGIN) next = lead + start - SCROLL_MARGIN;
+    if (lead + end - next > viewport - SCROLL_MARGIN) next = lead + end - viewport + SCROLL_MARGIN;
+    if (inLineWith(items[0])) next = 0;
+    else if (inLineWith(items[items.length - 1])) next = max;
+    next = Math.max(0, Math.min(next, max));
     if (next !== offset) {
       this.scrollOffsets.set(container, next);
       content.style.transform = vertical ? `translate3d(0, ${-next}px, 0)` : `translate3d(${-next}px, 0, 0)`;
     }
 
-    // The content's transform may be mid-transition, so its own rect cannot tell where it will settle.
-    // Its offset can (containers are positioned, see styles.css), and includes margins that collapse
-    // through it.
-    const inset = vertical ? container.clientTop + content.offsetTop : container.clientLeft + content.offsetLeft;
-    const origin = (vertical ? box.top : box.left) + inset - next;
+    const origin = (vertical ? box.top + container.clientTop : box.left + container.clientLeft) + lead - next;
     const size = end - start;
     return vertical
       ? { left: rect.left, right: rect.right, top: origin + start, bottom: origin + start + size }

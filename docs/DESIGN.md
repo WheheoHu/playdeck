@@ -406,9 +406,13 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - The focused episode's title, facts and summary sit at the top in a fixed box, updated 120 ms after focus settles.
   - A plays the episode (a placeholder until M3) and X opens its menu. Nothing on the page scrolls vertically.
   - Moving into the season tabs lands on the selected season (`data-focus-group` / `data-focus-entry`).
+  - LB/RB, shown on either side of the season tabs, switch seasons from anywhere on the page. The previous season stays on screen until the next one loads. Focus in the strip moves to the new season's next episode, and a focused season tab follows the selection.
 - **Focus engine.**
   - The ring was 12 px above Libraries tiles. A heading's margin collapsed through the scroll content, so the content did not start at the container's padding edge.
   - The settled position now comes from the content's `offsetTop`; `[data-scroll]` containers are positioned so that they are its offset parent.
+  - Scroll limits are measured in the container's padding box, including its end padding. Before this, Settings stopped scrolling 72 px short and its last row of buttons stayed below the panel.
+  - The first and last rows of focusables scroll all the way, so the headings and notes beyond them show.
+  - The Libraries tab ends above the hints bar, so its last row of tiles never sits under it.
   - Measured elements are sized for their focus scale, read from `--focus-scale`.
   - Spatial navigation:
     - Candidates in the nearest row ahead beat any farther row, so a narrow row of tabs is never skipped for a wider row behind it.
@@ -416,7 +420,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 - **Performance.**
   - `perf.py --cold` clears the HTTP cache first, so every poster and still loads during the run. Keys repeat every 90 ms, like a held D-pad.
   - The script now also covers the Libraries tab, the show page's episode strip and a season switch.
-  - Result on the Deck: rAF p95 11.2 ms with 1 drop in 2,915 frames. gamescope measured p95 11.11 ms with 7 single-vsync misses in 1,193 presents (0.6%).
+  - Result on the Deck: rAF p95 11.2 ms with 1 drop in 2,915 frames. gamescope measured p95 11.11 ms with 6 single-vsync misses in 1,174 presents (0.5%).
 
 M0–M3 running on the Deck in dev mode is the MVP. Release 0.1 is the MVP plus M4. M5 follows when a suitable 4K HDR display is available for testing; until then, tests that need an external display are skipped.
 

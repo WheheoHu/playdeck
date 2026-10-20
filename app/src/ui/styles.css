@@ -767,9 +767,10 @@ p {
 }
 
 /* Libraries */
+/* Ends above the hints bar, so scrolling keeps the focused tile clear of it. */
 .libraries {
   position: absolute;
-  inset: 72px 0 0 0;
+  inset: 72px 0 44px 0;
   padding: 0 48px;
 }
 
@@ -953,11 +954,19 @@ p {
   -webkit-line-clamp: 3;
 }
 
-.season-tabs {
+.season-bar {
   position: absolute;
   top: 388px;
-  right: 0;
-  left: 44px;
+  right: 48px;
+  left: 48px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.season-tabs {
+  position: relative;
+  min-width: 0;
 }
 
 .row-content {
