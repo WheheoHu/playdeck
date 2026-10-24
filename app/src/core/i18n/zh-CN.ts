@@ -203,6 +203,8 @@ export const zhCN: Messages = {
   'settings.autoplayNext': '自动播放下一集',
   'settings.autoSkipMarkers': '自动跳过片头和片尾',
   'settings.refreshSwitching': '屏幕刷新率匹配视频',
+  'settings.refreshSwitchDelay': '刷新率切换延迟播放',
+  'settings.refreshSwitchDelayNote': '等待屏幕刷新率或显示模式切换完成后再开始播放声音与画面。',
   'settings.hardwareDecoding': '硬件解码',
   'settings.networkMonitor': '播放时显示网络监控',
   'settings.audioLanguage': '默认音轨语言',

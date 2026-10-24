@@ -55,6 +55,8 @@ export interface Settings {
   librarySort: Record<string, LibrarySort>;
   /** On the internal panel, run at a multiple of the video's frame rate during playback. */
   refreshSwitching: boolean;
+  /** Delay in ms before unpausing playback so refresh-rate / display mode switches finish first (default 1500). */
+  refreshSwitchDelay: number;
   hardwareDecoding: boolean;
   /** Skip intro and credits markers without asking. */
   autoSkipMarkers: boolean;
@@ -81,6 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeHiddenLibraries: [],
   librarySort: {},
   refreshSwitching: true,
+  refreshSwitchDelay: 1500,
   hardwareDecoding: true,
   autoSkipMarkers: false,
   autoplayNext: true,
@@ -240,6 +243,7 @@ export interface PlaySession {
 export interface PlayerOptions {
   hardwareDecoding: boolean;
   refreshSwitching: boolean;
+  refreshSwitchDelay: number;
   subtitleScale: number;
   subtitleColor: SubtitleColor;
   subtitleBackground: SubtitleBackground;

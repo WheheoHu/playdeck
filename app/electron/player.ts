@@ -12,8 +12,9 @@ const BUNDLED_MPV = '/app/bin/mpv';
 const FLATPAK_MPV_APP = 'io.mpv.Mpv';
 const IPC_TIMEOUT_MS = 20_000;
 const VO_TIMEOUT_MS = 15_000;
-/** A mode switch takes about 0.6 s and drops frames (S4), so it happens before playback starts. */
-const REFRESH_SETTLE_MS = 1000;
+/** A mode switch takes about 0.6 s after gamescope's debounce and drops frames (S4), so it happens before playback starts. */
+const REFRESH_SETTLE_MS = 1500;
+const REFRESH_PULSE_MS = 50;
 const PROGRESS_INTERVAL_MS = 1000;
 const STOP_TIMEOUT_MS = 3000;
 const OUTPUT_TAIL = 2000;
@@ -318,7 +319,8 @@ export class Player {
 
   /** The loaded file is paused on its first frame: take the screen, match the refresh rate, then play. */
   private async handoff(run: Run): Promise<void> {
-    if (!run.shown) {
+    const firstShow = !run.shown;
+    if (firstShow) {
       const deadline = Date.now() + VO_TIMEOUT_MS;
       while (!run.voConfigured && !run.finished && Date.now() < deadline) await sleep(50);
       if (run.finished) return;
@@ -326,12 +328,16 @@ export class Player {
       run.shown = true;
       this.gamepad.start();
     }
+    let switched = false;
     if (run.options.refreshSwitching) {
       try {
-        await this.matchRefresh(run);
+        switched = await this.matchRefresh(run);
       } catch (error) {
         console.error('refresh switching failed:', error);
       }
+    }
+    if (switched || (firstShow && run.options.refreshSwitching)) {
+      await this.settleDisplay(run, run.options.refreshSwitchDelay ?? REFRESH_SETTLE_MS);
     }
     if (run.finished) return;
     run.ipc?.send('set_property', 'pause', false);
@@ -347,19 +353,40 @@ export class Player {
   }
 
   /** Internal panel only; external displays keep their mode and mpv resamples (section 5.3). */
-  private async matchRefresh(run: Run): Promise<void> {
+  private async matchRefresh(run: Run): Promise<boolean> {
+    if (!run.containerFps && run.ipc) {
+      const queried = await run.ipc.command('get_property', 'container-fps').catch(() => undefined);
+      if (typeof queried === 'number' && queried > 0) run.containerFps = queried;
+    }
     const fps = run.containerFps ?? run.frameRate;
     const control = await this.control();
     const display = control?.display;
-    if (!control || !display?.internal || !fps || display.refreshRates.length === 0) return;
+    if (!control || !display?.internal || !fps || display.refreshRates.length === 0) return false;
     const native = Math.max(...display.refreshRates);
     const rate = refreshFor(fps, display.refreshRates) ?? native;
     const target = rate === native ? 0 : Math.round(fps);
     run.ipc?.send('set_property', 'display-fps-override', rate);
-    if (target === this.refreshTarget) return;
+    if (target === this.refreshTarget) return false;
     await control.setAppTargetRefreshCycle(target, true);
     this.refreshTarget = target;
-    await sleep(REFRESH_SETTLE_MS);
+    return true;
+  }
+
+  /**
+   * gamescope applies a refresh-rate change only while the focused window presents frames, and a
+   * paused mpv draws none on its own. Pulse a faint 1x1 OSD update so the mode switch completes
+   * while mpv is still paused and silent.
+   */
+  private async settleDisplay(run: Run, delayMs: number): Promise<void> {
+    if (delayMs <= 0) return;
+    const deadline = Date.now() + delayMs;
+    while (!run.finished && Date.now() < deadline) {
+      run.ipc?.send('script-message-to', 'playdeck', 'pulse');
+      await sleep(Math.min(REFRESH_PULSE_MS, Math.max(1, deadline - Date.now())));
+    }
+    if (!run.finished) {
+      run.ipc?.send('script-message-to', 'playdeck', 'pulse', 'stop');
+    }
   }
 
   private async restoreRefresh(): Promise<void> {

@@ -73,7 +73,9 @@ local hide_timer, toast_timer, scrub_timer, stop_timer
 local shade = mp.create_osd_overlay('ass-events')
 local main = mp.create_osd_overlay('ass-events')
 local measurer = mp.create_osd_overlay('ass-events')
-shade.z, main.z = 0, 1
+local pulse = mp.create_osd_overlay('ass-events')
+local pulse_tick = false
+shade.z, main.z, pulse.z = 0, 1, -1
 measurer.hidden, measurer.compute_bounds = true, true
 
 -- Text and strings ---------------------------------------------------------------------------------
@@ -1105,6 +1107,21 @@ local function load_session(file)
 end
 
 mp.register_script_message('load', load_session)
+
+-- gamescope switches refresh rates only while the focused window presents frames; an imperceptible
+-- 1x1 overlay update forces vo=gpu-next to present frames while mpv stays paused during handoff.
+mp.register_script_message('pulse', function(mode)
+  if mode == 'stop' then
+    pulse.data = ''
+    pulse:update()
+    return
+  end
+  pulse_tick = not pulse_tick
+  pulse.res_x, pulse.res_y = res_x, res_y
+  pulse.data = string.format('{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H%s&\\p1}m 0 0 l 1 0 l 1 1 l 0 1{\\p0}',
+    pulse_tick and 'FE' or 'FD')
+  pulse:update()
+end)
 
 mp.register_event('file-loaded', function()
   if not session then return end

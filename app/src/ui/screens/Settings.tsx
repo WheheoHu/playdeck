@@ -145,6 +145,7 @@ function WebDavLibrariesSection({
 const UI_SCALES = [90, 100, 110, 125, 150] as const;
 const SUBTITLE_SCALES = [75, 100, 125, 150] as const;
 const HDR_BRIGHTNESS = [100, 150, 203, 300, 400] as const;
+const REFRESH_SWITCH_DELAYS = [0, 500, 1000, 1500, 2000, 3000] as const;
 
 const AUDIO_LANGUAGES: [AudioLanguage, MessageKey][] = [
   ['', 'settings.lang.server'],
@@ -313,6 +314,14 @@ function PlaybackSettings() {
           </FocusButton>
         ))}
       </div>
+
+      <OptionGroup
+        title={t('settings.refreshSwitchDelay')}
+        note={t('settings.refreshSwitchDelayNote')}
+        value={settings.refreshSwitchDelay}
+        options={REFRESH_SWITCH_DELAYS.map((ms) => [ms, ms === 0 ? t('settings.lang.off') : `${(ms / 1000).toFixed(1)} s`])}
+        onSelect={(refreshSwitchDelay) => updateSettings({ refreshSwitchDelay })}
+      />
     </>
   );
 }

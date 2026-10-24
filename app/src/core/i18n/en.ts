@@ -202,6 +202,8 @@ export const en = {
   'settings.autoplayNext': 'Play the next episode automatically',
   'settings.autoSkipMarkers': 'Skip intros and credits automatically',
   'settings.refreshSwitching': 'Match the screen’s refresh rate to the video',
+  'settings.refreshSwitchDelay': 'Refresh switch playback delay',
+  'settings.refreshSwitchDelayNote': 'Wait for the display mode or refresh-rate switch to finish before starting audio and video.',
   'settings.hardwareDecoding': 'Hardware decoding',
   'settings.networkMonitor': 'Show the network monitor during playback',
   'settings.audioLanguage': 'Default audio language',

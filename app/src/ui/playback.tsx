@@ -199,6 +199,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         await bridge.player.start(sessionFor(entry, options), {
           hardwareDecoding: settings.hardwareDecoding,
           refreshSwitching: settings.refreshSwitching,
+          refreshSwitchDelay: settings.refreshSwitchDelay,
           subtitleScale: settings.subtitleScale,
           subtitleColor: settings.subtitleColor,
           subtitleBackground: settings.subtitleBackground,
