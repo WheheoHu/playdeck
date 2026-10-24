@@ -7,8 +7,9 @@ import { GamepadReader } from './gamepad';
 import { GamescopeControl, refreshFor } from './gamescope';
 import { MpvIpc, type MpvMessage } from './mpvIpc';
 
-/** Flathub mpv until M4 bundles the media stack (docs/DESIGN.md, section 11). */
-const MPV_APP = 'io.mpv.Mpv';
+const BUNDLED_MPV = '/app/bin/mpv';
+/** Fallback Flathub mpv for unpacked development runs outside PlayDeck's Flatpak. */
+const FLATPAK_MPV_APP = 'io.mpv.Mpv';
 const IPC_TIMEOUT_MS = 20_000;
 const VO_TIMEOUT_MS = 15_000;
 /** A mode switch takes about 0.6 s and drops frames (S4), so it happens before playback starts. */
@@ -147,7 +148,10 @@ export class Player {
       ...(this.paths.logDir ? ['--msg-level=all=info,vo=v'] : []),
       ...(existsSync(this.paths.userConf) ? [`--include=${this.paths.userConf}`] : []),
     ];
-    const child = spawn('flatpak', ['run', MPV_APP, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const bundled = existsSync(BUNDLED_MPV);
+    const child = bundled
+      ? spawn(BUNDLED_MPV, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+      : spawn('flatpak', ['run', FLATPAK_MPV_APP, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
     const run: Run = {
       child,
       options,

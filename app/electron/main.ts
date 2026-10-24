@@ -27,6 +27,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 app.setName('PlayDeck');
+app.setPath('userData', path.join(os.homedir(), '.config', 'PlayDeck'));
 
 function serveRenderer(request: Request): Promise<Response> | Response {
   const { pathname } = new URL(request.url);
@@ -72,8 +73,8 @@ async function registerBridge(): Promise<void> {
 }
 
 /**
- * mpv runs in its own Flatpak sandbox, which can write /tmp and the development directory but not
- * PlayDeck's config directory, so the socket and session files live there.
+ * In the PlayDeck Flatpak, mpv runs in the same sandbox and shares /tmp; in unpacked dev builds
+ * outside Flatpak, Flathub mpv runs in its own sandbox and shares PLAYDECK_DEV_ROOT/run.
  */
 function createPlayer(win: BrowserWindow): Player {
   const devRoot = process.env.PLAYDECK_DEV_ROOT;

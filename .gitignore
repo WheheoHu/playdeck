@@ -8,9 +8,12 @@ dist-electron/
 __pycache__/
 out/
 build/
+build-dir/
+packaging/app-bundle/
 .flatpak-builder/
 repo/
 *.flatpak
+SHA256SUMS
 
 # Local environment and secrets
 .env

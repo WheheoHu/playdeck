@@ -301,13 +301,14 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 
 ## 11. Packaging, distribution and licensing
 
-- **Format:** a Flatpak based on the Electron base app.
-  - It bundles mpv, FFmpeg, libplacebo, libass and SDL, built at pinned versions, so that HDR and DV behavior is deterministic.
-  - It requires the `org.freedesktop.Platform.VulkanLayer.gamescope` extension and `--filesystem=xdg-run/gamescope-0:ro`.
+- **Format:** a Flatpak on `org.freedesktop.Platform//25.08` (`packaging/io.github.wheheohu.PlayDeck.json`).
+  - It bundles Electron, mpv, FFmpeg, libplacebo, libass, LuaJIT and zimg, built at pinned versions, so that HDR and DV behavior is deterministic.
+  - It uses `org.freedesktop.Platform.VulkanLayer.gamescope` and `--filesystem=xdg-run/gamescope-0:ro`.
 - **Distribution:**
   - First as `.flatpak` files on GitHub Releases, then on Flathub.
+  - `.github/workflows/ci.yml` checks every branch push and pull request; `.github/workflows/release.yml` builds `PlayDeck-x86_64.flatpak` and publishes a GitHub Release when a `v*` tag is pushed.
   - An "Add to Steam" helper creates the non-Steam shortcut with artwork and the recommended controller layout. It does not touch Steam's resolution settings (see section 5.2).
-- **Identity:** the working name is PlayDeck, with app ID `io.github.<user>.PlayDeck`. Check for name collisions before submitting to Flathub.
+- **Identity:** PlayDeck, with app ID `io.github.wheheohu.PlayDeck`.
 - **License:** GPL-3.0-or-later.
 - **Repository:** hosted on the maintainer's GitHub account, made public once spikes S1–S5 pass.
 

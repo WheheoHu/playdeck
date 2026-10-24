@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=PlayDeck
+Comment=Plex client for SteamOS Gaming Mode with HDR playback
+Exec=playdeck
+Icon=io.github.wheheohu.PlayDeck
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;TV;
+Keywords=Plex;HDR;SteamDeck;Media;Player;
+StartupWMClass=PlayDeck

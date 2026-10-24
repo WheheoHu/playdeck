@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.wheheohu.PlayDeck</id>
+  <name>PlayDeck</name>
+  <summary>Plex client for SteamOS Gaming Mode with real HDR output</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.wheheohu">
+    <name>WheheoHu</name>
+  </developer>
+  <description>
+    <p>
+      PlayDeck is a gamepad-driven 10-foot Plex client built for the Steam Deck OLED in SteamOS Gaming Mode (gamescope), combining a 90 fps browse UI with full-screen Direct Play HDR10 and Dolby Vision playback through mpv.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.wheheohu.PlayDeck.desktop</launchable>
+  <url type="homepage">https://github.com/WheheoHu/playdeck</url>
+  <url type="bugtracker">https://github.com/WheheoHu/playdeck/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-10-24" />
+  </releases>
+</component>

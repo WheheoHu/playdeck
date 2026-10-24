@@ -1,0 +1,343 @@
+{
+  "id": "io.github.wheheohu.PlayDeck",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "25.08",
+  "sdk": "org.freedesktop.Sdk",
+  "command": "playdeck",
+  "separate-locales": false,
+  "finish-args": [
+    "--share=ipc",
+    "--socket=x11",
+    "--socket=wayland",
+    "--socket=pulseaudio",
+    "--share=network",
+    "--device=all",
+    "--filesystem=xdg-run/gamescope-0:ro",
+    "--filesystem=xdg-config/PlayDeck:create",
+    "--env=LD_LIBRARY_PATH=/app/lib:/app/lib64",
+    "--env=LC_NUMERIC=C",
+    "--env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons"
+  ],
+  "cleanup": [
+    "/include",
+    "/lib/pkgconfig",
+    "/share/doc",
+    "/share/man",
+    "*.la",
+    "*.a"
+  ],
+  "modules": [
+    {
+      "name": "libXpresent",
+      "buildsystem": "autotools",
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://www.x.org/releases/individual/lib/libXpresent-1.0.1.tar.xz",
+          "sha256": "b964df9e5a066daa5e08d2dc82692c57ca27d00b8cc257e8e960c9f1cf26231b"
+        }
+      ]
+    },
+    {
+      "name": "luajit",
+      "no-autogen": true,
+      "make-args": [
+        "BUILDMODE=dynamic",
+        "PREFIX=${FLATPAK_DEST}"
+      ],
+      "make-install-args": [
+        "PREFIX=${FLATPAK_DEST}"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/openresty/luajit2/archive/b411bec3ce550ef9968fc83bca094455cf812c1f.tar.gz",
+          "sha256": "718f9ebb54b715ec4cd86ef1605177a9a2c1c80a0b6de4c26f3e1ccc8e5fd327"
+        }
+      ],
+      "cleanup": [
+        "/bin/luajit*"
+      ]
+    },
+    {
+      "name": "uchardet",
+      "buildsystem": "cmake-ninja",
+      "config-opts": [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_LIBDIR=lib",
+        "-DBUILD_STATIC=0",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz",
+          "sha256": "e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0"
+        }
+      ],
+      "cleanup": [
+        "/bin/uchardet"
+      ]
+    },
+    {
+      "name": "libass",
+      "config-opts": [
+        "--disable-static",
+        "--enable-asm",
+        "--enable-harfbuzz",
+        "--enable-fontconfig"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.xz",
+          "sha256": "78f1179b838d025e9c26e8fef33f8092f65611444ffa1bfc0cfac6a33511a05a"
+        }
+      ]
+    },
+    {
+      "name": "zimg",
+      "config-opts": [
+        "--disable-static"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "archive-type": "tar",
+          "url": "https://api.github.com/repos/sekrit-twc/zimg/tarball/release-3.0.6",
+          "sha256": "15140e491c4ce9db5f02a038d8a1eb53e9151b55eeed06a2899425a6ebfef367"
+        }
+      ]
+    },
+    {
+      "name": "ffmpeg",
+      "config-opts": [
+        "--disable-debug",
+        "--disable-doc",
+        "--disable-static",
+        "--disable-ffplay",
+        "--disable-ffprobe",
+        "--enable-encoder=png",
+        "--enable-gnutls",
+        "--enable-gpl",
+        "--enable-shared",
+        "--enable-version3",
+        "--enable-libaom",
+        "--enable-libass",
+        "--enable-libdav1d",
+        "--enable-libfreetype",
+        "--enable-libmp3lame",
+        "--enable-libopus",
+        "--enable-libjxl",
+        "--enable-libtheora",
+        "--enable-libv4l2",
+        "--enable-libvorbis",
+        "--enable-libvpx",
+        "--enable-libwebp",
+        "--enable-libxml2",
+        "--enable-vulkan",
+        "--enable-libdrm",
+        "--enable-vaapi"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/FFmpeg/FFmpeg/archive/501bb49457b9dfb25d6a208832e0a6e6cd53108d.tar.gz",
+          "sha256": "90c0ec7acc3e545667d0d256719133edb356f6ccc8284ce03e07b3449d1a0d3a"
+        }
+      ],
+      "cleanup": [
+        "/bin/ffmpeg",
+        "/share/ffmpeg/examples"
+      ]
+    },
+    {
+      "name": "libplacebo",
+      "buildsystem": "meson",
+      "config-opts": [
+        "--libdir=/app/lib",
+        "-Ddemos=false",
+        "-Dvulkan=enabled",
+        "-Dshaderc=enabled",
+        "-Dlcms=enabled",
+        "-Ddovi=enabled"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/haasn/libplacebo/archive/refs/tags/v7.360.1.tar.gz",
+          "sha256": "d05fdf90bea2f629eaa2d115e909fd356388ac639e54f77b87a018a6d76224bd"
+        },
+        {
+          "type": "archive",
+          "dest": "3rdparty/glad",
+          "url": "https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz",
+          "sha256": "44f06f9195427c7017f5028d0894f57eb216b0a8f7c4eda7ce883732aeb2d0fc"
+        },
+        {
+          "type": "archive",
+          "dest": "3rdparty/jinja",
+          "url": "https://github.com/pallets/jinja/archive/refs/tags/3.1.6.tar.gz",
+          "sha256": "2074b22a72caa65474902234b320d73463d6d4c223ee49f4b433495758356337"
+        },
+        {
+          "type": "archive",
+          "dest": "3rdparty/markupsafe",
+          "url": "https://github.com/pallets/markupsafe/archive/refs/tags/3.0.3.tar.gz",
+          "sha256": "f1d9d06c34515dd3ad210ec769da613057b536d11d6c039183b87757a883a254"
+        },
+        {
+          "type": "archive",
+          "dest": "3rdparty/Vulkan-Headers",
+          "url": "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.4.337.tar.gz",
+          "sha256": "13845b9dc873758cdc1f2be6219f7fc99afea0a2c80586043b5bb435b99e590b"
+        },
+        {
+          "type": "archive",
+          "dest": "3rdparty/fast_float",
+          "url": "https://github.com/fastfloat/fast_float/archive/refs/tags/v8.2.2.tar.gz",
+          "sha256": "e64b5fff88e04959154adbd5fb83331d91f2e04ac06454671cdfcbdff172b158"
+        }
+      ]
+    },
+    {
+      "name": "hwdata",
+      "buildsystem": "autotools",
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/vcrhonek/hwdata/archive/refs/tags/v0.394.tar.gz",
+          "sha256": "b7c3fd7214a3b7c49d2661db127a712dc11cffd1799f793947aa1cb20aaf3298"
+        }
+      ]
+    },
+    {
+      "name": "libdisplay-info",
+      "buildsystem": "meson",
+      "config-opts": [
+        "--libdir=/app/lib"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/0.2.0/libdisplay-info-0.2.0.tar.gz",
+          "sha256": "f7331fcaf5527251b84c8fb84238d06cd2f458422ce950c80e86c72927aa8c2b"
+        }
+      ]
+    },
+    {
+      "name": "mpv",
+      "buildsystem": "meson",
+      "build-options": {
+        "append-pkg-config-path": "/app/lib64/pkgconfig"
+      },
+      "config-opts": [
+        "--libdir=/app/lib",
+        "-Dalsa=enabled",
+        "-Dbuild-date=false",
+        "-Dcplayer=true",
+        "-Dcplugins=enabled",
+        "-Ddmabuf-wayland=enabled",
+        "-Ddrm=enabled",
+        "-Degl-drm=enabled",
+        "-Degl-wayland=enabled",
+        "-Degl-x11=enabled",
+        "-Degl=enabled",
+        "-Dgbm=enabled",
+        "-Dgl-x11=enabled",
+        "-Dgl=enabled",
+        "-Diconv=enabled",
+        "-Djpeg=enabled",
+        "-Dlcms2=enabled",
+        "-Dlibarchive=enabled",
+        "-Dlibmpv=true",
+        "-Dlua=enabled",
+        "-Dpipewire=enabled",
+        "-Dplain-gl=enabled",
+        "-Dpulse=enabled",
+        "-Duchardet=enabled",
+        "-Dvaapi-drm=enabled",
+        "-Dvaapi-wayland=enabled",
+        "-Dvaapi-x11=enabled",
+        "-Dvaapi=enabled",
+        "-Dvector=enabled",
+        "-Dvulkan=enabled",
+        "-Dwayland=enabled",
+        "-Dwerror=false",
+        "-Dx11=enabled",
+        "-Dxv=enabled",
+        "-Dzimg=enabled",
+        "-Dzlib=enabled"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
+          "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+        }
+      ],
+      "cleanup": [
+        "/share/applications",
+        "/share/icons",
+        "/share/metainfo",
+        "/share/bash-completion",
+        "/share/zsh"
+      ]
+    },
+    {
+      "name": "electron",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/lib/electron",
+        "cp -a . /app/lib/electron/",
+        "chmod +x /app/lib/electron/electron /app/lib/electron/chrome_crashpad_handler"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "archive-type": "zip",
+          "strip-components": 0,
+          "only-arches": [
+            "x86_64"
+          ],
+          "url": "https://github.com/electron/electron/releases/download/v44.9.0/electron-v44.9.0-linux-x64.zip",
+          "sha256": "ecced7ecb55697f92ca870939c5988557faa8acd8c222c232cae5913d318c8b9"
+        }
+      ]
+    },
+    {
+      "name": "playdeck",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/lib/playdeck",
+        "cp -a dist dist-electron mpv package.json /app/lib/playdeck/",
+        "install -Dm755 playdeck.sh /app/bin/playdeck",
+        "install -Dm644 io.github.wheheohu.PlayDeck.desktop /app/share/applications/io.github.wheheohu.PlayDeck.desktop",
+        "install -Dm644 io.github.wheheohu.PlayDeck.metainfo.xml /app/share/metainfo/io.github.wheheohu.PlayDeck.metainfo.xml",
+        "install -Dm644 io.github.wheheohu.PlayDeck.svg /app/share/icons/hicolor/scalable/apps/io.github.wheheohu.PlayDeck.svg"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "app-bundle"
+        },
+        {
+          "type": "file",
+          "path": "playdeck.sh"
+        },
+        {
+          "type": "file",
+          "path": "io.github.wheheohu.PlayDeck.desktop"
+        },
+        {
+          "type": "file",
+          "path": "io.github.wheheohu.PlayDeck.metainfo.xml"
+        },
+        {
+          "type": "file",
+          "path": "io.github.wheheohu.PlayDeck.svg"
+        }
+      ]
+    }
+  ]
+}
