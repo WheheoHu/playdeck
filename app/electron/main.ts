@@ -23,6 +23,8 @@ const MPV_SCRIPT = path.join(__dirname, '..', 'mpv', 'playdeck.lua');
 const SCHEME = 'playdeck';
 const IN_GAMESCOPE = Boolean(process.env.GAMESCOPE_WAYLAND_DISPLAY);
 
+declare const __PLAYDECK_VERSION__: string | undefined;
+
 protocol.registerSchemesAsPrivileged([
   { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
@@ -53,7 +55,7 @@ async function registerBridge(): Promise<void> {
   const credentials = new JsonFile<Credentials>(path.join(dataDir, 'credentials.json'), {}, 0o600);
   const cache = new JsonFile<AppCache>(path.join(dataDir, 'cache.json'), DEFAULT_CACHE);
   const appInfo: AppInfo = {
-    version: app.getVersion(),
+    version: typeof __PLAYDECK_VERSION__ === 'string' ? __PLAYDECK_VERSION__ : app.getVersion(),
     platform: 'Linux',
     platformVersion: os.release(),
     device: deviceName(),

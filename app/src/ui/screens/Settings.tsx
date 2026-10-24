@@ -198,7 +198,7 @@ function PlaybackSettings() {
 }
 
 export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: SettingsProps) {
-  const { settings, updateSettings, t } = useApp();
+  const { plex, settings, updateSettings, t } = useApp();
   const languages: [LanguageSetting, string][] = [
     ['system', t('settings.language.system')],
     ...Object.entries(LOCALES).map(([locale, { name }]) => [locale as LanguageSetting, name] as [LanguageSetting, string]),
@@ -209,7 +209,9 @@ export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: S
       <div className="settings-panel" data-scroll="y">
         <div className="scroll-content">
           <h2>{t('settings.title')}</h2>
-          <p className="muted">{t('settings.signedInAs', { name: session.account.title })}</p>
+          <p className="muted">
+            {t('settings.signedInAs', { name: session.account.title })} · v{plex.app.version}
+          </p>
 
           <h3>{t('settings.language')}</h3>
           <div className="option-row">

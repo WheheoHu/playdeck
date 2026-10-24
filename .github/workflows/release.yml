@@ -12,6 +12,8 @@ jobs:
   release:
     name: Build Flatpak & Publish Release
     runs-on: ubuntu-latest
+    env:
+      PLAYDECK_CHANNEL: Release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,8 +25,18 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      - name: Compute build version
+        id: version
+        run: |
+          VERSION=$(./app/scripts/version.sh)
+          echo "Build version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "bundle=PlayDeck_${VERSION}_x86_64.flatpak" >> "$GITHUB_OUTPUT"
+
       - name: Build PlayDeck app
         working-directory: app
+        env:
+          PLAYDECK_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           npm ci
           npm run typecheck
@@ -55,21 +67,23 @@ jobs:
       - name: Build Flatpak bundle
         env:
           SKIP_APP_BUILD: '1'
-        run: ./packaging/build-flatpak.sh
+          PLAYDECK_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: ./packaging/build-flatpak.sh "${{ steps.version.outputs.bundle }}"
 
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PlayDeck-x86_64.flatpak
+          name: PlayDeck_${{ steps.version.outputs.version }}
           path: |
-            PlayDeck-x86_64.flatpak
+            ${{ steps.version.outputs.bundle }}
             SHA256SUMS
           if-no-files-found: error
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: PlayDeck ${{ steps.version.outputs.version }}
           generate_release_notes: true
           files: |
-            PlayDeck-x86_64.flatpak
+            ${{ steps.version.outputs.bundle }}
             SHA256SUMS
