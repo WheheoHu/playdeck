@@ -818,6 +818,52 @@ p {
   font-weight: 700;
 }
 
+.library-tile-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.library-tile-head .library-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webdav-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgb(229 160 13 / 22%);
+  border: 1px solid rgb(229 160 13 / 65%);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.webdav-scan-banner {
+  position: absolute;
+  z-index: 4;
+  top: 20px;
+  right: 220px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: rgb(23 23 29 / 90%);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.spinner.spinner-small {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
 .page-header {
   position: absolute;
   top: 24px;
@@ -1354,4 +1400,149 @@ p {
 .search-status {
   padding: 16px 48px;
   font-size: 18px;
+}
+
+/* WebDAV setup wizard & settings */
+.webdav-row-actions {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+.webdav-setup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(980px, calc(100vw - 64px));
+  max-height: min(680px, calc(100vh - 80px));
+  padding: 32px 36px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
+  box-sizing: border-box;
+}
+
+.webdav-setup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.webdav-setup-header h2 {
+  margin: 0;
+}
+
+.webdav-steps {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.webdav-step {
+  padding: 4px 10px;
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgb(255 255 255 / 5%);
+}
+
+.webdav-step.active {
+  background: var(--accent);
+  color: #111;
+  font-weight: 700;
+}
+
+.webdav-connect-body {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+}
+
+.webdav-fields {
+  display: grid;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.webdav-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  text-align: left;
+  background: rgb(255 255 255 / 5%);
+}
+
+.webdav-field.active {
+  border: 2px solid var(--accent);
+}
+
+.webdav-field-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.webdav-field-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+}
+
+.webdav-submit {
+  margin-top: 6px;
+}
+
+.webdav-error {
+  font-size: 15px;
+}
+
+.webdav-keyboard {
+  flex: none;
+  display: grid;
+  gap: 8px;
+}
+
+.webdav-quick-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.webdav-token-key {
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: 15px;
+}
+
+.webdav-folder-body {
+  max-height: 480px;
+}
+
+.webdav-folder-list {
+  display: grid;
+  gap: 10px;
+  padding: 6px 4px;
+}
+
+.webdav-folder-confirm {
+  text-align: left;
+}
+
+.webdav-type-body {
+  display: grid;
+  gap: 18px;
+}
+
+.webdav-mixed-warning {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgb(229 160 13 / 14%);
+  border: 1px solid rgb(229 160 13 / 45%);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
 }

@@ -1,24 +1,32 @@
+import { useState } from 'react';
 import type {
   AudioLanguage,
   LanguageSetting,
   SubtitleBackground,
   SubtitleColor,
   SubtitleLanguage,
+  WebDavLibraryConfig,
 } from '../../../shared/bridge';
 import { LOCALES, type MessageKey } from '../../core/i18n';
 import { libraryId } from '../../core/plex/library';
 import type { Session } from '../../core/session';
+import { getWebDavCatalog } from '../../core/webdav/scanner';
 import { useApp } from '../AppContext';
 import { FocusButton, FocusScope } from '../focus/react';
 import { useSections } from '../library/LibrariesScreen';
 import { useServers } from '../servers';
 import { ServerStatusList } from './Servers';
+import { WebDavSetupModal } from './WebDavSetup';
 
 interface SettingsProps {
   session: Session;
+  webdavLibraries: WebDavLibraryConfig[];
+  onAddWebDav: (config: WebDavLibraryConfig) => Promise<void> | void;
+  onRemoveWebDav: (id: string) => Promise<void> | void;
   onClose: () => void;
   onSwitchUser: () => void;
   onSignOut: () => void;
+  onSignInPlex?: () => void;
 }
 
 const SETTINGS_HINTS = { b: 'hint.close' };
@@ -43,11 +51,71 @@ function HomeLibraries() {
             <FocusButton key={id} className={shown ? 'option toggle on' : 'option toggle'} onSelect={() => toggle(id)}>
               <span className="toggle-mark">{shown ? '✓' : ''}</span>
               {section.title}
-              {online.length > 1 && <span className="muted"> · {online.find((s) => s.id === section.serverId)?.name}</span>}
+              {section.isWebDav && <span className="webdav-badge">WebDAV</span>}
+              {!section.isWebDav && online.length > 1 && (
+                <span className="muted"> · {online.find((s) => s.id === section.serverId)?.name}</span>
+              )}
             </FocusButton>
           );
         })}
         {!sections.data && <p className="muted">{t('app.loading')}</p>}
+      </div>
+    </>
+  );
+}
+
+function WebDavLibrariesSection({
+  libraries,
+  onOpenAdd,
+  onRemove,
+}: {
+  libraries: WebDavLibraryConfig[];
+  onOpenAdd: () => void;
+  onRemove: (id: string) => void;
+}) {
+  const { t } = useApp();
+  const { rescanWebDav } = useServers();
+
+  return (
+    <>
+      <h3>{t('settings.webdavLibraries')}</h3>
+      <ul className="server-list">
+        {libraries.length === 0 && <li className="muted">{t('webdav.empty')}</li>}
+        {libraries.map((lib) => {
+          const catalog = getWebDavCatalog(lib.id);
+          const typeLabel = t(
+            lib.type === 'movie' ? 'libraries.movies' : lib.type === 'show' ? 'libraries.shows' : 'libraries.mixed',
+          );
+          const status = catalog?.scanning
+            ? t('webdav.scanningFolders', {
+                scanned: catalog.scannedFolders,
+                total: Math.max(catalog.totalFolders, catalog.scannedFolders),
+              })
+            : catalog?.error
+              ? catalog.error
+              : t('library.count', { count: catalog?.topItems.length ?? 0 });
+
+          return (
+            <li key={lib.id} className="server-row online webdav-server-row">
+              <div>
+                <div className="server-name">
+                  {lib.name} <span className="webdav-badge">WebDAV</span>
+                </div>
+                <div className="muted">
+                  {typeLabel} · {lib.baseUrl}
+                  {lib.rootPath} · {status}
+                </div>
+              </div>
+              <div className="webdav-row-actions">
+                <FocusButton onSelect={() => rescanWebDav(lib.id)}>{t('webdav.rescan')}</FocusButton>
+                <FocusButton onSelect={() => onRemove(lib.id)}>{t('webdav.remove')}</FocusButton>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="option-row">
+        <FocusButton onSelect={onOpenAdd}>{t('webdav.add')}</FocusButton>
       </div>
     </>
   );
@@ -197,8 +265,19 @@ function PlaybackSettings() {
   );
 }
 
-export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: SettingsProps) {
+export function SettingsOverlay({
+  session,
+  webdavLibraries,
+  onAddWebDav,
+  onRemoveWebDav,
+  onClose,
+  onSwitchUser,
+  onSignOut,
+  onSignInPlex,
+}: SettingsProps) {
   const { plex, settings, updateSettings, t } = useApp();
+  const [addingWebDav, setAddingWebDav] = useState(false);
+  const hasPlexAccount = Boolean(session.account.token);
   const languages: [LanguageSetting, string][] = [
     ['system', t('settings.language.system')],
     ...Object.entries(LOCALES).map(([locale, { name }]) => [locale as LanguageSetting, name] as [LanguageSetting, string]),
@@ -210,7 +289,8 @@ export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: S
         <div className="scroll-content">
           <h2>{t('settings.title')}</h2>
           <p className="muted">
-            {t('settings.signedInAs', { name: session.account.title })} · v{plex.app.version}
+            {hasPlexAccount ? t('settings.signedInAs', { name: session.account.title }) : t('settings.webdavOnlyMode')} · v
+            {plex.app.version}
           </p>
 
           <h3>{t('settings.language')}</h3>
@@ -238,15 +318,30 @@ export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: S
 
           <HomeLibraries />
 
-          <h3>{t('settings.servers')}</h3>
-          <ServerStatusList />
+          <WebDavLibrariesSection
+            libraries={webdavLibraries}
+            onOpenAdd={() => setAddingWebDav(true)}
+            onRemove={(id) => void onRemoveWebDav(id)}
+          />
+
+          {hasPlexAccount && (
+            <>
+              <h3>{t('settings.servers')}</h3>
+              <ServerStatusList />
+            </>
+          )}
 
           <div className="settings-actions">
             {session.homeUsers.length > 1 && <FocusButton onSelect={onSwitchUser}>{t('settings.switchUser')}</FocusButton>}
-            <FocusButton onSelect={onSignOut}>{t('settings.signOut')}</FocusButton>
+            {hasPlexAccount ? (
+              <FocusButton onSelect={onSignOut}>{t('settings.signOut')}</FocusButton>
+            ) : (
+              onSignInPlex && <FocusButton onSelect={onSignInPlex}>{t('signIn.title')}</FocusButton>
+            )}
           </div>
         </div>
       </div>
+      {addingWebDav && <WebDavSetupModal onAdd={onAddWebDav} onClose={() => setAddingWebDav(false)} />}
     </FocusScope>
   );
 }

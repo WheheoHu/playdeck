@@ -49,11 +49,12 @@ const Hero = memo(
 
 export function HomeScreen() {
   const { plex, settings, t } = useApp();
-  const { online, entries } = useServers();
+  const { online, entries, webdavStatus, webdavTick } = useServers();
   const nav = useNav();
   const hero = useRef<HeroHandle>(null);
   const hidden = settings.homeHiddenLibraries;
-  const key = online.map((server) => server.id).sort().join(',') + (hidden.length ? `:hide=${[...hidden].sort()}` : '');
+  const baseKey = online.map((server) => server.id).sort().join(',') + (hidden.length ? `:hide=${[...hidden].sort()}` : '');
+  const key = baseKey ? `${baseKey}:w${webdavTick}` : '';
 
   // Filtered before merging, so hidden libraries do not use up the merged rows' length.
   const gather = async (fetch: (index: number) => Promise<MediaItem[]>) => {
@@ -105,11 +106,22 @@ export function HomeScreen() {
   }, [continueWatching.data, movies.data, shows.data, t]);
 
   const onFocusItem = useCallback((item: MediaItem) => hero.current?.show(item), []);
-  const waiting = entries === null || continueWatching.loading || movies.loading || shows.loading;
+  const waiting =
+    entries === null ||
+    webdavStatus.scanning ||
+    continueWatching.loading ||
+    movies.loading ||
+    shows.loading;
 
   return (
     <div className="home">
       <Hero ref={hero} />
+      {webdavStatus.scanning && (
+        <div className="webdav-scan-banner">
+          <div className="spinner spinner-small" />
+          <span>{t('webdav.scanningHome', { count: webdavStatus.scannedItems })}</span>
+        </div>
+      )}
       {rows.length > 0 ? (
         <Rows idPrefix="home" rows={rows} autoFocus onSelect={nav.open} onContext={nav.menu} onFocusItem={onFocusItem} />
       ) : (

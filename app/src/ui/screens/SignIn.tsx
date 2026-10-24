@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { PlexAccount } from '../../../shared/bridge';
+import type { PlexAccount, WebDavLibraryConfig } from '../../../shared/bridge';
 import { LINK_URL } from '../../core/plex/auth';
 import { type SignInState, runSignIn } from '../../core/signIn';
 import { useApp } from '../AppContext';
 import { QrCode } from '../components/QrCode';
 import { FocusButton, FocusScope } from '../focus/react';
+import { WebDavSetupModal } from './WebDavSetup';
 
 function useCountdown(until: number | undefined): string {
   const [now, setNow] = useState(Date.now());
@@ -17,11 +18,20 @@ function useCountdown(until: number | undefined): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function SignInScreen({ onSignedIn }: { onSignedIn: (account: PlexAccount) => void }) {
+export function SignInScreen({
+  onSignedIn,
+  onAddWebDav,
+  onCancel,
+}: {
+  onSignedIn: (account: PlexAccount) => void;
+  onAddWebDav: (config: WebDavLibraryConfig) => Promise<void> | void;
+  onCancel?: () => void;
+}) {
   const { plex, bridge, t } = useApp();
   const [state, setState] = useState<SignInState>({ status: 'creating' });
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [addingWebDav, setAddingWebDav] = useState(false);
   const countdown = useCountdown(state.status === 'waiting' ? state.expiresAt : undefined);
 
   useEffect(() => {
@@ -34,7 +44,7 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (account: PlexAccount
   }, [plex, onSignedIn, attempt]);
 
   return (
-    <FocusScope className="screen sign-in">
+    <FocusScope className="screen sign-in" onBack={onCancel}>
       <h1>{t('signIn.title')}</h1>
       {error ? (
         <div className="sign-in-body">
@@ -63,8 +73,14 @@ export function SignInScreen({ onSignedIn }: { onSignedIn: (account: PlexAccount
       )}
       <div className="screen-footer">
         {state.status === 'waiting' && !error && <p className="muted">{t('signIn.waiting')}</p>}
-        <FocusButton onSelect={() => bridge.quit()}>{t('app.quit')}</FocusButton>
+        <FocusButton onSelect={() => setAddingWebDav(true)}>{t('signIn.addWebDav')}</FocusButton>
+        {onCancel ? (
+          <FocusButton onSelect={onCancel}>{t('hint.back')}</FocusButton>
+        ) : (
+          <FocusButton onSelect={() => bridge.quit()}>{t('app.quit')}</FocusButton>
+        )}
       </div>
+      {addingWebDav && <WebDavSetupModal onAdd={onAddWebDav} onClose={() => setAddingWebDav(false)} />}
     </FocusScope>
   );
 }

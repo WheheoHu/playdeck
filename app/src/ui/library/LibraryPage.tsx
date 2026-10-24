@@ -77,7 +77,7 @@ interface GridProps {
 
 function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
   const { plex, t } = useApp();
-  const { byId } = useServers();
+  const { byId, webdavTick } = useServers();
   const nav = useNav();
   const manager = useFocusManager();
   const server = byId(section.serverId);
@@ -101,6 +101,13 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  useEffect(() => {
+    if (!section.isWebDav) return;
+    pages.current.clear();
+    loading.current.clear();
+    pageLoaded();
+  }, [section.isWebDav, webdavTick]);
 
   function ensurePage(page: number) {
     if (!server || pages.current.has(page) || loading.current.has(page)) return;
@@ -286,9 +293,10 @@ export function LibraryPage({ section }: { section: LibrarySection }) {
     <FocusScope className="page library-page" onBack={nav.pop} onAction={onAction} hints={PAGE_HINTS}>
       <header className="page-header">
         <h1>{section.title}</h1>
+        {section.isWebDav && <span className="webdav-badge">WebDAV</span>}
         <span className="muted">
-          {server?.name}
-          {total !== null && ` · ${t('library.count', { count: total })}`}
+          {!section.isWebDav && server?.name}
+          {total !== null && `${!section.isWebDav && server?.name ? ' · ' : ''}${t('library.count', { count: total })}`}
         </span>
         <FocusButton className="sort-button" onSelect={() => setSorting(true)}>
           <Glyph button="y" />
