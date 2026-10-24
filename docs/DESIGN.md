@@ -319,6 +319,11 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - A fixed non-Steam shortcut, "PlayDeck (dev)", runs that directory's launcher script. It is started remotely with `steam steam://rungameid/<id>` so that it runs inside Gaming Mode.
 - **Diagnostics:** logs from mpv, the WSI layer and the application are collected over SSH. Visual HDR quality is verified by eye on the device and the display.
 - **Builds:** local builds use an x86_64 Linux environment. Release Flatpaks are built by GitHub Actions.
+- **Git branches and commits:**
+  - `main`: stable, verified builds with no major bugs, always usable.
+  - `dev`: integration branch for completed work.
+  - `feature/<name>` and `bugfix/<name>`: branched from `dev`, merged back into `dev` when complete, and promoted from `dev` into `main` once verified.
+  - Commit subjects start with a prefix (`feature: …`, `bugfix: …` or `chore: …`).
 
 ## 13. Milestones
 

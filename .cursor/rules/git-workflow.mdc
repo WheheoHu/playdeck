@@ -1,0 +1,23 @@
+---
+description: Git branch model (main/dev/feature/bugfix) and commit message conventions
+alwaysApply: true
+---
+
+# Git Branch & Commit Workflow
+
+## Branch Model
+- `main`: Always stable and usable with no major bugs. Never commit directly to `main`; only merge verified `dev` states into `main`.
+- `dev`: Integration branch. All feature and bugfix branches start from `dev` and merge back into `dev`.
+- `feature/<name>`: Used for new features or milestone tasks (e.g. `feature/m4-packaging`).
+- `bugfix/<name>`: Used for bug fixes (e.g. `bugfix/refresh-restore`).
+- Flow: `feature/*` or `bugfix/*` -> `dev` -> `main`.
+
+## Commit Message Convention
+Every commit subject must start with a lowercase type prefix:
+- `feature: <summary>` — new features, capabilities, or user-facing improvements
+- `bugfix: <summary>` — bug fixes and regressions
+- `chore: <summary>` — build scripts, CI, docs, refactors, or tooling
+
+## Hygiene & Security
+- Never commit `.env`, Plex tokens, local machine paths, personal server names/IPs/ports, or debug logs.
+- Only commit when requested by the user.
