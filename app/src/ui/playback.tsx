@@ -59,7 +59,7 @@ interface Current {
  * hidden; the overlay stays up so that nothing underneath takes input when it comes back.
  */
 export function PlaybackProvider({ children }: { children: ReactNode }) {
-  const { bridge, plex, settings, t } = useApp();
+  const { bridge, plex, settings, t, updateSettings } = useApp();
   const { byId } = useServers();
   const nav = useNav();
   const [starting, setStarting] = useState<string | null>(null);
@@ -71,8 +71,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const current = useRef<Current | null>(null);
   const pending = useRef<Current | null>(null);
   const last = useRef({ position: 0, duration: 0 });
-  const latest = useRef({ settings, t, nav });
-  latest.current = { settings, t, nav };
+  const latest = useRef({ settings, t, nav, updateSettings });
+  latest.current = { settings, t, nav, updateSettings };
 
   const sessionFor = useCallback(
     (entry: Current, options: PlayOptions = {}) => {
@@ -158,6 +158,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           }
           case 'next':
             void onNext();
+            return;
+          case 'networkMonitor':
+            void latest.current.updateSettings({ networkMonitor: event.on });
             return;
           case 'ended': {
             const wasActive = active.current;

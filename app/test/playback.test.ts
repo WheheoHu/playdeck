@@ -6,7 +6,7 @@ import { TimelineReporter } from '../src/core/timeline';
 import { fakeFetch } from './support';
 
 const SERVER = { id: 'srv', name: 'Home', baseUrl: 'https://plex.example:32400', token: 'secret-token' };
-const SETTINGS = { autoSkipMarkers: false, autoplayNext: true };
+const SETTINGS = { autoSkipMarkers: false, autoplayNext: true, networkMonitor: true };
 
 const EPISODE: RawMetadata = {
   ratingKey: 501,
@@ -27,6 +27,7 @@ const EPISODE: RawMetadata = {
     {
       id: 7,
       duration: 3_000_000,
+      bitrate: 24_500,
       Part: [
         {
           id: 70,
@@ -55,7 +56,8 @@ describe('play sessions', () => {
     expect(session.httpHeaders).toContain('X-Plex-Token: secret-token');
     expect(session.httpHeaders.some((header) => header.startsWith('Accept:'))).toBe(false);
     expect(session.frameRate).toBe(23.976);
-    expect(session).toMatchObject({ title: 'Severance', subtitle: 'S1 · E1 · Pilot', autoplayNext: true });
+    expect(session).toMatchObject({ title: 'Severance', subtitle: 'S1 · E1 · Pilot', autoplayNext: true, networkMonitor: true });
+    expect(session.bitrate).toBe(24_500);
   });
 
   it('resumes from the saved offset unless asked to start over or nearly finished', () => {

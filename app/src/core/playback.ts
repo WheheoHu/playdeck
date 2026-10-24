@@ -86,7 +86,7 @@ export interface SessionOptions {
   /** Ignore the resume offset. */
   fromStart?: boolean;
   next?: MediaItem | null;
-  settings: Pick<Settings, 'autoSkipMarkers' | 'autoplayNext'>;
+  settings: Pick<Settings, 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor'>;
   strings: Record<string, string>;
 }
 
@@ -108,11 +108,13 @@ export function buildSession(context: PlexContext, server: LibraryServer, playab
     start: offset / 1000,
     ...playTitles(item),
     frameRate: video?.frameRate,
+    bitrate: version.bitrate,
     tracks: sessionTracks(part, server),
     markers: item.markers.map((marker) => ({ kind: marker.kind, start: marker.start / 1000, end: marker.end / 1000 })),
     next: options.next ? playTitles(options.next) : undefined,
     autoSkipMarkers: options.settings.autoSkipMarkers,
     autoplayNext: options.settings.autoplayNext,
+    networkMonitor: options.settings.networkMonitor,
     strings: options.strings,
   };
 }

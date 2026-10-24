@@ -47,13 +47,14 @@ function HomeLibraries() {
   );
 }
 
-type PlaybackSetting = 'refreshSwitching' | 'hardwareDecoding' | 'autoSkipMarkers' | 'autoplayNext';
+type PlaybackSetting = 'refreshSwitching' | 'hardwareDecoding' | 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor';
 
 const PLAYBACK_SETTINGS: [PlaybackSetting, MessageKey][] = [
   ['autoplayNext', 'settings.autoplayNext'],
   ['autoSkipMarkers', 'settings.autoSkipMarkers'],
   ['refreshSwitching', 'settings.refreshSwitching'],
   ['hardwareDecoding', 'settings.hardwareDecoding'],
+  ['networkMonitor', 'settings.networkMonitor'],
 ];
 
 function PlaybackSettings() {

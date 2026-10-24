@@ -240,10 +240,11 @@ export class Player {
       case 'client-message': {
         const [name, payload] = message.args ?? [];
         if (name !== 'playdeck-event' || !payload) return;
-        const event = JSON.parse(payload) as { type: string; audio?: unknown; subtitle?: unknown };
+        const event = JSON.parse(payload) as { type: string; audio?: unknown; subtitle?: unknown; on?: unknown };
         const id = (value: unknown) => (typeof value === 'number' ? value : undefined);
         if (event.type === 'tracks') this.emit({ type: 'tracks', audio: id(event.audio), subtitle: id(event.subtitle) });
         else if (event.type === 'next') this.emit({ type: 'next' });
+        else if (event.type === 'networkMonitor') this.emit({ type: 'networkMonitor', on: event.on === true });
         return;
       }
     }

@@ -30,10 +30,15 @@ local NEXT_COUNTDOWN = 10
 local NEXT_LEAD = 10
 local NEXT_TIMEOUT = 30
 local TOAST_TIME = 2
+-- B stops playback when pressed again within this many seconds.
+local STOP_WINDOW = 2
 local TICK = 0.25
+-- The network panel samples mpv's read rate once a second and graphs the last minute.
+local SAMPLE_INTERVAL = 1
+local SAMPLES = 60
 
 -- ASS colors are BGR; alpha 00 is opaque.
-local TEXT, MUTED, ACCENT = 'F5F2F2', 'A69A9A', '0DA0E5'
+local TEXT, MUTED, ACCENT, WARN = 'F5F2F2', 'A69A9A', '0DA0E5', '6B6BF0'
 local SURFACE, BAR_BG, BLACK = '1D1717', '0F0B0B', '000000'
 local GLYPH, GLYPH_TEXT, GLYPH_ALPHA = 'F5F2F2', '111111', '14'
 
@@ -55,11 +60,15 @@ local state = {
   skipped = {},
   next_card = nil, -- { remaining = seconds or nil without autoplay }
   next_cancelled = false,
+  stop_armed = false, -- B was pressed once; again within STOP_WINDOW stops
 }
+
+-- Read rates in bits/s, false while the cache was not reading (full, or the whole file is in).
+local net = { on = nil, samples = {}, sum = 0, count = 0, rate = nil, last = nil, ahead = 0, bytes = 0, idle = false, eof = false }
 
 local props = { pos = nil, duration = nil, paused = true, buffering = false, cache = 0, eof = false }
 local res_x, res_y = 1280, HEIGHT
-local hide_timer, toast_timer, scrub_timer
+local hide_timer, toast_timer, scrub_timer, stop_timer
 
 local shade = mp.create_osd_overlay('ass-events')
 local main = mp.create_osd_overlay('ass-events')
@@ -85,6 +94,17 @@ local function clock(seconds)
   local h, m, s = math.floor(seconds / 3600), math.floor(seconds % 3600 / 60), seconds % 60
   if h > 0 then return string.format('%d:%02d:%02d', h, m, s) end
   return string.format('%d:%02d', m, s)
+end
+
+local function rate_text(bits)
+  if bits >= 1e8 then return string.format('%.0f Mbps', bits / 1e6) end
+  if bits >= 1e6 then return string.format('%.1f Mbps', bits / 1e6) end
+  return string.format('%.0f kbps', bits / 1e3)
+end
+
+local function size_text(bytes)
+  if bytes >= 1e9 then return string.format('%.1f GB', bytes / 1e9) end
+  return string.format('%.0f MB', bytes / 1e6)
 end
 
 local function esc(text)
@@ -256,6 +276,33 @@ end
 
 local function quit()
   mp.commandv('quit')
+end
+
+local function arm_stop()
+  state.stop_armed = true
+  if stop_timer then stop_timer:kill() end
+  stop_timer = mp.add_timeout(STOP_WINDOW, function()
+    state.stop_armed = false
+    draw()
+  end)
+end
+
+local function set_network(on)
+  net.on = on
+  emit({ type = 'networkMonitor', on = on })
+end
+
+local function sample_network()
+  local cache = mp.get_property_native('demuxer-cache-state')
+  if not session or not cache then return end
+  net.ahead, net.bytes = cache['cache-duration'] or 0, cache['fw-bytes'] or 0
+  -- Near its limit the cache only tops up what playback used, at the video's rate, not the network's.
+  local limit = mp.get_property_number('demuxer-max-bytes') or math.huge
+  net.idle, net.eof = cache.idle == true or net.bytes >= limit * 0.9, cache.eof == true
+  net.rate = not (net.idle or net.eof) and (mp.get_property_number('cache-speed') or 0) * 8 or nil
+  net.samples[#net.samples + 1] = net.rate or false
+  if #net.samples > SAMPLES then table.remove(net.samples, 1) end
+  if net.rate then net.sum, net.count, net.last = net.sum + net.rate, net.count + 1, net.rate end
 end
 
 local function play_next()
@@ -432,6 +479,9 @@ local PLAYBACK_ROWS = {
   { label = 'osd.subtitleSize', step = function(d) adjust('sub-scale', d * 0.1, 0.5, 2.5) end,
     reset = function() mp.set_property_number('sub-scale', 1) end,
     value = function() return string.format('%d%%', math.floor((mp.get_property_number('sub-scale') or 1) * 100 + 0.5)) end },
+  { label = 'osd.networkMonitor', toggle = true, step = function() set_network(not net.on) end,
+    reset = function() set_network(not net.on) end,
+    value = function() return S(net.on and 'osd.on' or 'osd.off') end },
 }
 
 local function open_tracks()
@@ -446,17 +496,12 @@ local function open_tracks()
   end
   -- With a single audio track, the choice to make is the subtitles.
   state.menu = { kind = 'tracks', columns = columns, column = #columns[1].rows > 1 and 1 or 2 }
-  state.osd = false
+  state.osd, state.stop_armed = false, false
 end
 
 local function open_playback()
   state.menu = { kind = 'playback', cursor = 1 }
-  state.osd = false
-end
-
-local function open_stop()
-  state.menu = { kind = 'stop' }
-  state.osd = false
+  state.osd, state.stop_armed = false, false
 end
 
 local function close_menu()
@@ -492,8 +537,6 @@ local function menu_confirm()
     select_track(row or nil, true)
   elseif menu.kind == 'playback' then
     PLAYBACK_ROWS[menu.cursor].reset()
-  elseif menu.kind == 'stop' then
-    quit()
   end
 end
 
@@ -534,6 +577,10 @@ end
 
 local function draw_osd()
   local y_bar = res_y - HINTS_HEIGHT - 44
+  if props.paused then
+    box(MARGIN, y_bar - 130, MARGIN + 6, y_bar - 104, TEXT, '00', 2)
+    box(MARGIN + 14, y_bar - 130, MARGIN + 20, y_bar - 104, TEXT, '00', 2)
+  end
   text(MARGIN, y_bar - 56, 1, 30, TEXT, session.title or '', { bold = true, clip = { MARGIN, 0, res_x - 420, res_y } })
   if session.subtitle and session.subtitle ~= '' then
     text(MARGIN, y_bar - 24, 1, 18, MUTED, session.subtitle)
@@ -546,7 +593,8 @@ local function draw_osd()
   local speed = mp.get_property_number('speed') or 1
   local ends = os.date('%H:%M', os.time() + math.floor(remaining / speed))
   text(res_x - MARGIN, y_time, 6, 18, MUTED, '−' .. clock(remaining) .. '  ·  ' .. S('osd.endsAt', { time = ends }))
-  text(res_x - MARGIN, 36, 9, 20, TEXT, os.date('%H:%M'), { border = 1.5 })
+  local read_bps = (mp.get_property_number('cache-speed') or 0) * 8
+  text(res_x - MARGIN, 36, 9, 20, TEXT, rate_text(read_bps) .. '  ·  ' .. os.date('%H:%M'), { border = 1.5 })
   hints_bar({
     { 'dpad', S('osd.seek') },
     { 'lb-rb', S('osd.chapter') },
@@ -602,8 +650,8 @@ end
 local function draw_toast()
   local w = width(state.toast, 17) + 48
   local cx = res_x / 2
-  box(cx - w / 2, 28, cx + w / 2, 72, SURFACE, '10', 22)
-  text(cx, 50, 5, 17, TEXT, state.toast)
+  box(cx - w / 2, 68, cx + w / 2, 112, SURFACE, '10', 22)
+  text(cx, 90, 5, 17, TEXT, state.toast)
 end
 
 local function draw_tracks(menu)
@@ -652,15 +700,73 @@ local function draw_playback(menu)
     local value = row.value()
     text(x0 + pw - 32, cy, 6, 19, TEXT, (focused and '‹  ' or '') .. value .. (focused and '  ›' or ''), { bold = true })
   end
-  hints_bar({ { 'dpad', S('osd.adjust') }, { 'a', S('osd.reset') }, { 'b', S('osd.back') } })
+  local confirm = PLAYBACK_ROWS[menu.cursor].toggle and 'osd.toggle' or 'osd.reset'
+  hints_bar({ { 'dpad', S('osd.adjust') }, { 'a', S(confirm) }, { 'b', S('osd.back') } })
 end
 
-local function draw_stop()
-  local pw, ph = 520, 132
-  local x0, y0 = (res_x - pw) / 2, (res_y - HINTS_HEIGHT - ph) / 2
-  box(x0, y0, x0 + pw, y0 + ph, SURFACE, '08', 16)
-  text(res_x / 2, y0 + ph / 2, 5, 26, TEXT, S('osd.stopTitle'), { bold = true })
-  hints_bar({ { 'a', S('osd.stop') }, { 'b', S('osd.cancel') } })
+local function draw_stop_hint()
+  local label = S('osd.stopAgain')
+  local w = 18 + 26 + 12 + width(label, 17) + 24
+  local x0 = (res_x - w) / 2
+  box(x0, 68, x0 + w, 112, SURFACE, '10', 22)
+  glyph('b', x0 + 18, 90)
+  text(x0 + 18 + 26 + 12, 90, 4, 17, TEXT, label)
+end
+
+-- One bar per second of the last minute, the newest on the right; bars below the video's bit rate are red.
+local function draw_graph(x0, y0, x1, y1, bitrate)
+  box(x0, y0, x1, y1, 'FFFFFF', 'F0', 4)
+  local peak = bitrate or 0
+  for _, rate in ipairs(net.samples) do
+    if rate and rate > peak then peak = rate end
+  end
+  if peak <= 0 then return end
+  peak = peak * 1.15
+  local slot = (x1 - x0) / SAMPLES
+  local first = SAMPLES - #net.samples
+  local fast, slow = {}, {}
+  for i, rate in ipairs(net.samples) do
+    if rate and rate > 0 then
+      local bx = x0 + (first + i - 1) * slot
+      local top = y1 - (y1 - y0) * rate / peak
+      local list = (bitrate and rate < bitrate) and slow or fast
+      list[#list + 1] = string.format('m %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f',
+        bx, y1, bx, top, bx + slot - 1, top, bx + slot - 1, y1)
+    end
+  end
+  if #fast > 0 then shape(table.concat(fast, ' '), ACCENT, '20') end
+  if #slow > 0 then shape(table.concat(slow, ' '), WARN, '20') end
+  if bitrate then
+    local by = y1 - (y1 - y0) * bitrate / peak
+    shape(rounded(x0, by - 0.75, x1, by + 0.75, 0), TEXT, '50')
+  end
+end
+
+local function draw_network()
+  local x0, y0, w = MARGIN, 28, 300
+  local x1 = x0 + w
+  local graph_y0, graph_y1 = y0 + 76, y0 + 120
+  local y1 = graph_y1 + 68
+  box(x0, y0, x1, y1, SURFACE, '30', 14)
+  local status = net.eof and 'osd.cachedAll' or net.idle and 'osd.cacheFull' or 'osd.reading'
+  text(x0 + 16, y0 + 20, 4, 14, MUTED, S('osd.network'), { bold = true })
+  text(x1 - 16, y0 + 20, 6, 14, MUTED, S(status))
+  local bitrate = session.bitrate and session.bitrate * 1000
+  -- While the cache is not reading, the last rate it read at stays, dimmed.
+  local shown = net.rate or net.last
+  local color = not net.rate and MUTED or (bitrate and net.rate < bitrate) and WARN or TEXT
+  text(x0 + 16, y0 + 52, 4, 26, color, shown and rate_text(shown) or '—', { bold = true })
+  draw_graph(x0 + 16, graph_y0, x1 - 16, graph_y1, bitrate)
+  if bitrate then text(x0 + 16, graph_y1 + 20, 4, 14, MUTED, S('osd.bitrate', { rate = rate_text(bitrate) })) end
+  if net.count > 0 then
+    text(x1 - 16, graph_y1 + 20, 6, 14, MUTED, S('osd.average', { rate = rate_text(net.sum / net.count) }))
+  end
+  text(x0 + 16, graph_y1 + 46, 4, 15, TEXT, S('osd.ahead', { time = clock(net.ahead), size = size_text(net.bytes) }))
+end
+
+-- The track menu covers the panel's corner; the playback menu leaves it clear, to show its own switch.
+local function network_visible()
+  return net.on and not (state.menu and state.menu.kind == 'tracks')
 end
 
 local last_shade, last_main
@@ -675,7 +781,7 @@ draw = function()
     shade.res_x, shade.res_y = res_x, res_y
     if shaded == 'osd' then
       shade.data = string.format('{\\an7\\pos(0,0)\\bord0\\shad0\\blur60\\1c&H%s&\\1a&H38&\\p1}%s{\\p0}', BLACK,
-        rounded(-80, res_y - 250, res_x + 80, res_y + 80, 0))
+        rounded(-80, res_y - 280, res_x + 80, res_y + 80, 0))
     elseif shaded == 'menu' then
       shade.data = string.format('{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H%s&\\1a&H70&\\p1}%s{\\p0}', BLACK,
         rounded(0, 0, res_x, res_y, 0))
@@ -685,17 +791,21 @@ draw = function()
     shade:update()
   end
   if menu then
-    if menu.kind == 'tracks' then draw_tracks(menu)
-    elseif menu.kind == 'playback' then draw_playback(menu)
-    else draw_stop() end
+    if menu.kind == 'tracks' then draw_tracks(menu) else draw_playback(menu) end
   else
     if state.osd then draw_osd() end
     if state.next_card and session.next then draw_next_card()
     elseif state.prompt and session.markers[state.prompt] then draw_prompt() end
-    if loading_next then draw_center(S('osd.loadingNext'))
-    elseif props.buffering then draw_center(S('osd.buffering', { n = math.floor(props.cache) })) end
+    if loading_next then
+      draw_center(S('osd.loadingNext'))
+    elseif props.buffering then
+      local body = S('osd.buffering', { n = math.floor(props.cache) })
+      draw_center(net.rate and body .. '  ·  ' .. rate_text(net.rate) or body)
+    end
   end
-  if state.toast then draw_toast() end
+  if network_visible() then draw_network() end
+  if state.stop_armed then draw_stop_hint()
+  elseif state.toast then draw_toast() end
   local data = table.concat(out, '\n')
   if data == last_main then return end
   last_main = data
@@ -796,6 +906,8 @@ on_press('back', function()
   if not session then return end
   if state.menu then
     close_menu()
+  elseif state.stop_armed then
+    return quit()
   elseif state.next_card then
     cancel_next()
   elseif state.osd then
@@ -804,7 +916,7 @@ on_press('back', function()
     state.dismissed[state.prompt] = true
     state.prompt = nil
   elseif not loading_next then
-    open_stop()
+    arm_stop()
   end
   draw()
 end)
@@ -866,8 +978,11 @@ local function load_session(file)
     if marker.kind == 'credits' then final_credits = marker end
   end
   state.menu, state.prompt, state.scrub, state.next_card, state.next_cancelled = nil, nil, nil, nil, false
-  state.dismissed, state.skipped = {}, {}
+  state.dismissed, state.skipped, state.stop_armed = {}, {}, false
   props.pos, props.duration, props.eof = session.start, nil, false
+  -- The panel's switch is the viewer's from the first video on; later sessions may predate a change.
+  if net.on == nil then net.on = session.networkMonitor == true end
+  net.samples, net.sum, net.count, net.rate, net.last = {}, 0, 0, nil, nil
   mp.set_property_native('http-header-fields', session.httpHeaders or {})
   mp.set_property_bool('pause', true)
   local options = { ['force-media-title'] = session.title or '' }
@@ -944,7 +1059,9 @@ mp.add_periodic_timer(TICK, function()
     card.remaining = card.remaining - TICK
     if card.remaining <= 0 then return play_next() end
   end
-  if state.osd or card or props.buffering then draw() end
+  if state.osd or card or props.buffering or network_visible() then draw() end
 end)
+
+mp.add_periodic_timer(SAMPLE_INTERVAL, sample_network)
 
 load_session(mp.get_opt('playdeck-session'))

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MediaItem } from '../../core/plex/library';
 import { setWatched } from '../../core/plex/library';
 import type { Session } from '../../core/session';
@@ -19,11 +19,10 @@ import { useServers } from '../servers';
 
 const TOAST_MS = 2500;
 
-/** B is handled (twice on Home quits) but left out of the bar. */
-const SHELL_HINTS = { b: '', menu: 'hint.settings' };
+/** B on Home asks to quit and stays out of the bar; on other tabs B returns to Home. */
+const HOME_HINTS = { b: '', menu: 'hint.settings' };
+const TAB_HINTS = { b: 'hint.back', menu: 'hint.settings' };
 const QUIT_HINTS = { b: 'hint.cancel' };
-/** Two presses of B within this, on Home, ask to quit. */
-const DOUBLE_BACK_MS = 700;
 
 function QuitPrompt({ onCancel }: { onCancel: () => void }) {
   const { bridge, t } = useApp();
@@ -82,7 +81,6 @@ export function MainShell({ session }: { session: Session }) {
   const [stack, setStack] = useState<Route[]>([]);
   const [menuItem, setMenuItem] = useState<MediaItem | null>(null);
   const [quitting, setQuitting] = useState(false);
-  const lastBack = useRef(-Infinity);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -130,15 +128,9 @@ export function MainShell({ session }: { session: Session }) {
   }, [setTab]);
 
   const onShellBack = useCallback(() => {
-    if (tab !== 'home') return;
-    const now = performance.now();
-    if (now - lastBack.current < DOUBLE_BACK_MS) {
-      lastBack.current = -Infinity;
-      setQuitting(true);
-    } else {
-      lastBack.current = now;
-    }
-  }, [tab]);
+    if (tab === 'home') setQuitting(true);
+    else setTab('home');
+  }, [tab, setTab]);
 
   return (
     <NavContext.Provider value={nav}>
@@ -147,7 +139,7 @@ export function MainShell({ session }: { session: Session }) {
           className="shell"
           onBack={onShellBack}
           onAction={onShellAction}
-          hints={SHELL_HINTS}
+          hints={tab === 'home' ? HOME_HINTS : TAB_HINTS}
           hidden={stack.length > 0}
         >
           <TabBar tab={tab} onTab={setTab} session={session} />

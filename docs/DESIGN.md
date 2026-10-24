@@ -207,7 +207,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | D-pad / left stick | Move focus |
 | Right stick / wheel | Scroll the focused card's content (the subtitle list) a page at a time |
 | A / Enter | Select |
-| B / Esc / Backspace | Back. Twice on Home, ask "Quit PlayDeck?" |
+| B / Esc / Backspace | Back. On Libraries or Search, return to Home; on Home, ask "Quit PlayDeck?" |
 | X | Context menu (watched state, version); Delete on the search keyboard |
 | Y | Sort on a library page |
 | LB / RB | Switch top tabs (Home, Libraries, Search) |
@@ -217,7 +217,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 - A bar along the bottom of the screen shows, SteamOS style, the buttons that do something for the focused element and its screen. LB and RB glyphs flank the top tabs.
 - The top tabs never take focus; LB/RB (or a tap) switch them, and focus stays in the tab's content.
 - Dialogs and Settings have no Close button: B closes them, and the bar says so.
-- The double B on Home is left out of the bar. Quitting is not in Settings.
+- B on Home is left out of the bar. Quitting is not in Settings.
 
 ### 7.3 Playback OSD (mpv Lua, defaults, all remappable)
 
@@ -229,12 +229,18 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 | LB / RB | Previous / next chapter, or "No chapters" |
 | Y | Audio and subtitle track menu |
 | X | Stats overlay (mpv's stats page: HDR/DV state, codec, bitrate, dropped frames) |
-| Menu (☰) | Playback menu: speed, audio delay, subtitle delay, subtitle size. A resets the row. |
-| B | The first that applies: close the menu, cancel the next-episode card, hide the OSD, dismiss the skip prompt. Otherwise ask "Stop playback?" |
+| Menu (☰) | Playback menu: speed, audio delay, subtitle delay, subtitle size, network monitor. A resets the row, or switches the monitor. |
+| B | The first that applies: close the menu, cancel the next-episode card, hide the OSD, dismiss the skip prompt. Otherwise "Press again to stop" shows for 2 s, and B again within that time stops playback. |
 
-- **OSD:** the title, a progress bar with buffered ranges, chapter ticks and markers, the time, the time left and when it ends, and a clock. It auto-hides after 4 s. The button hints run along the bottom, like the UI's hints bar.
+- **OSD:** a pause icon above the title while paused, the title, a progress bar with buffered ranges, chapter ticks and markers, the time, the time left and when it ends, and the current read rate next to the clock at the top right. It auto-hides after 4 s. The button hints run along the bottom, like the UI's hints bar.
 - **Skip intro / credits:** a prompt is shown while playback is inside a Plex marker.
 - **Next episode:** at the last credits marker, or 10 s before the end without one, a "Next episode in 10 s" card appears. A plays it now; B cancels. With autoplay off, the card has no countdown and waits.
+- **Network monitor:** a panel at the top left that stays on screen while it is switched on (playback menu, or Settings → Playback; the choice is remembered). It shows:
+  - the rate mpv reads the file at, red when it is below the video's average bit rate from Plex;
+  - a one-minute bar graph of that rate, with the bit rate as a line;
+  - the average rate since the video started, and how much is buffered ahead (time and size).
+
+  While the cache is full or the whole file is loaded, the last rate shows dimmed and those seconds stay out of the graph. Near its limit the cache only tops up what playback used, so its rate is the video's, not the network's. The buffering message shows the read rate whether or not the panel is on.
 - Keyboards and remotes get the same actions: arrows, Enter/Space, Esc/Backspace, Page Up/Down, Tab (tracks), `i` (stats), `m` (menu), `q` (stop), and the media keys.
 - The OSD is written for gamepads from scratch; uosc is mouse-oriented.
 
@@ -282,7 +288,8 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - hardware decoding;
   - UI size and UI language;
   - key mappings;
-  - marker auto-skip and next-episode autoplay.
+  - marker auto-skip and next-episode autoplay;
+  - the network monitor during playback.
 - Settings are stored in one human-readable file. Editing the file and editing in the UI are equivalent.
 - Advanced users can supply an `mpv.conf` override. It is the only option that requires editing a file, and the UI shows its path.
 
@@ -514,6 +521,21 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - The resolution guard and external displays move to M5.
   - Still to come from section 9: default audio and subtitle languages, subtitle style, HDR subtitle and OSD brightness, and key mapping.
   - In M3, DV P5, HDR10 and HDR10+ were tested only through spike S2 (section 14.1). The DV P8.1 file above is the only HDR file tested in M3.
+
+### 13.5 After M3
+
+- **Quitting and Back.** On Libraries or Search, B returns to Home. On Home, a single B opens "Quit PlayDeck?" (A quits, B cancels).
+- **Stopping.** The "Stop playback?" dialog is gone. B shows "Press again to stop" near the top for 2 s, and a second B stops. Opening a menu cancels it.
+- **OSD.** While paused, a `| |` pause icon sits above the title, left-aligned. The live read rate (`cache-speed`) is always shown to the left of the top-right clock (`12.5 Mbps · 19:12`).
+- **Network monitor** (section 7.3).
+  - The OSD script samples `demuxer-cache-state` and `cache-speed` once a second, whether or not the panel shows, so turning it on shows the last minute at once.
+  - The session carries the version's bit rate and the setting. The OSD's switch sends `networkMonitor` to the host, and the UI saves it as `networkMonitor` in `settings.json`. The bridge stays at version 2, since no host has shipped.
+- **Local test rig.** Local mpv 0.41 runs the same script, options and session as the Deck, against an HTTP server that serves a test file with Range support at an adjustable rate. Results:
+  - `cache-speed` followed the server: 1.5 MB/s at 12 Mbps, then 5 MB/s within 3 s at 40 Mbps.
+  - With the cache full, `cache-speed` held at the video's rate (1 MB/s for 8 Mbps), which is why those seconds are excluded.
+  - At 4 Mbps the rate and bars turned red. After a seek, playback ran out of buffer and showed "Buffering… 75% · 4.0 Mbps".
+  - The panel's switch sent `networkMonitor` off and on. B, then B 0.6 s later, quit mpv; a single B expired after 2 s.
+  - Still to test on the Deck: Noto Sans CJK sizes and a remote Plex server.
 
 M0–M3 running on the Deck in dev mode is the MVP. Release 0.1 is the MVP plus M4. M5 follows when a suitable 4K HDR display is available for testing; until then, tests that need an external display are skipped.
 

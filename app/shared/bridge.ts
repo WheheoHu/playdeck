@@ -28,6 +28,8 @@ export interface Settings {
   /** Skip intro and credits markers without asking. */
   autoSkipMarkers: boolean;
   autoplayNext: boolean;
+  /** Keep the network panel (download speed, buffer) on screen during playback. */
+  networkMonitor: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hardwareDecoding: true,
   autoSkipMarkers: false,
   autoplayNext: true,
+  networkMonitor: false,
 };
 
 export interface PlexAccount {
@@ -156,13 +159,16 @@ export interface PlaySession {
   subtitle?: string;
   /** The server's frame rate, used until mpv reports the container's. */
   frameRate?: number;
+  /** The file's average bit rate as the server reports it, in kbps; the network panel compares against it. */
+  bitrate?: number;
   tracks: SessionTrack[];
   markers: SessionMarker[];
   /** The episode that follows, for the "next episode" card. */
   next?: { title: string; subtitle?: string };
   autoSkipMarkers: boolean;
   autoplayNext: boolean;
-  /** OSD text in the UI language; `{n}` and `{time}` are filled in by the script. */
+  networkMonitor: boolean;
+  /** OSD text in the UI language; `{n}`, `{time}`, `{rate}` and `{size}` are filled in by the script. */
   strings: Record<string, string>;
 }
 
@@ -182,6 +188,8 @@ export type PlayerEvent =
   | { type: 'tracks'; audio?: number; subtitle?: number }
   /** The OSD wants the next episode, because the viewer asked or the countdown ran out. */
   | { type: 'next' }
+  /** The viewer turned the network panel on or off in the OSD's playback menu. */
+  | { type: 'networkMonitor'; on: boolean }
   /** mpv exited and the UI window is back. */
   | { type: 'ended'; position: number; duration: number; reachedEnd: boolean; error?: string };
 
