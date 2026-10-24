@@ -12,6 +12,7 @@
     "--socket=pulseaudio",
     "--share=network",
     "--device=all",
+    "--filesystem=/run/udev:ro",
     "--filesystem=xdg-run/gamescope-0:ro",
     "--filesystem=xdg-config/PlayDeck:create",
     "--env=LD_LIBRARY_PATH=/app/lib:/app/lib64",
