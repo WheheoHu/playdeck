@@ -54,3 +54,60 @@ jobs:
       - name: Build renderer & Electron main/preload
         working-directory: app
         run: npm run build
+
+  flatpak:
+    name: Build Flatpak Artifact
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Build PlayDeck app
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Flatpak build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flatpak \
+            flatpak-builder \
+            ostree \
+            elfutils \
+            ccache
+
+      - name: Cache Flatpak downloads and ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .flatpak-builder/ccache
+            .flatpak-builder/downloads
+            .flatpak-builder/git
+          key: flatpak-${{ runner.os }}-${{ hashFiles('packaging/io.github.wheheohu.PlayDeck.json') }}
+          restore-keys: |
+            flatpak-${{ runner.os }}-
+
+      - name: Build Flatpak bundle
+        env:
+          SKIP_APP_BUILD: '1'
+        run: ./packaging/build-flatpak.sh
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayDeck-x86_64.flatpak
+          path: |
+            PlayDeck-x86_64.flatpak
+            SHA256SUMS
+          if-no-files-found: error
