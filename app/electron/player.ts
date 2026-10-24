@@ -15,6 +15,8 @@ const VO_TIMEOUT_MS = 15_000;
 /** A mode switch takes about 0.6 s after gamescope's debounce and drops frames (S4), so it happens before playback starts. */
 const REFRESH_SETTLE_MS = 1500;
 const REFRESH_PULSE_MS = 50;
+/** Let the UI window map and commit a frame before mpv unmaps its window, so gamescope never focuses Steam UI (769). */
+const EXIT_HANDOFF_MS = 120;
 const PROGRESS_INTERVAL_MS = 1000;
 const STOP_TIMEOUT_MS = 3000;
 const OUTPUT_TAIL = 2000;
@@ -79,6 +81,7 @@ interface Run {
   output: string;
   /** The UI asked mpv to quit, so an unclean exit is not an error. */
   stopping: boolean;
+  endedEmitted: boolean;
   finished: boolean;
 }
 
@@ -89,6 +92,7 @@ interface Run {
  */
 export class Player {
   private run: Run | null = null;
+  private exiting: Promise<void> | null = null;
   private gamescope: Promise<GamescopeControl | null> | undefined;
   /** The frame rate gamescope was asked to match, 0 for the native rate. */
   private refreshTarget = 0;
@@ -101,6 +105,7 @@ export class Player {
   ) {}
 
   async start(session: PlaySession, options: PlayerOptions): Promise<void> {
+    if (this.exiting) await this.exiting;
     if (this.run) throw new Error('already playing');
     const { runDir } = this.paths;
     await fs.mkdir(runDir, { recursive: true, mode: 0o700 });
@@ -167,6 +172,7 @@ export class Player {
       lastProgress: 0,
       output: '',
       stopping: false,
+      endedEmitted: false,
       finished: false,
     };
     this.run = run;
@@ -180,11 +186,13 @@ export class Player {
       });
     }
     child.once('exit', () => log?.end());
-    child.once('error', (error) => {
-      run.error = error.message;
-      void this.finish(run);
+    this.exiting = new Promise<void>((resolve) => {
+      child.once('error', (error) => {
+        run.error = error.message;
+        void this.finish(run).finally(resolve);
+      });
+      child.once('exit', () => void this.finish(run).finally(resolve));
     });
-    child.once('exit', () => void this.finish(run));
 
     try {
       run.ipc = await MpvIpc.connect(socket, IPC_TIMEOUT_MS, () => this.run === run && !run.finished, (message) =>
@@ -207,12 +215,24 @@ export class Player {
 
   stop(): void {
     const run = this.run;
-    if (!run) return;
+    if (!run || run.stopping) return;
     run.stopping = true;
-    run.ipc?.send('quit');
-    setTimeout(() => {
-      if (!run.finished) run.child.kill();
-    }, STOP_TIMEOUT_MS);
+    this.gamepad.stop();
+    void this.stopRun(run);
+  }
+
+  private async stopRun(run: Run): Promise<void> {
+    if (run.shown) {
+      this.revealUi(run);
+      await sleep(EXIT_HANDOFF_MS);
+    }
+    if (!run.finished) {
+      run.ipc?.send('quit');
+      setTimeout(() => {
+        if (!run.finished) run.child.kill();
+      }, STOP_TIMEOUT_MS);
+    }
+    await this.restoreRefresh().catch((err: unknown) => console.error('refresh restore failed:', err));
   }
 
   /** Development control: raw mpv commands, e.g. keypresses and screenshots. */
@@ -282,6 +302,7 @@ export class Player {
         const id = (value: unknown) => (typeof value === 'number' ? value : undefined);
         if (event.type === 'tracks') this.emit({ type: 'tracks', audio: id(event.audio), subtitle: id(event.subtitle) });
         else if (event.type === 'next') this.emit({ type: 'next' });
+        else if (event.type === 'stop') this.stop();
         else if (event.type === 'networkMonitor') this.emit({ type: 'networkMonitor', on: event.on === true });
         else if (event.type === 'subtitleScale' && typeof event.scale === 'number')
           this.emit({ type: 'subtitleScale', scale: event.scale });
@@ -324,6 +345,11 @@ export class Player {
       const deadline = Date.now() + VO_TIMEOUT_MS;
       while (!run.voConfigured && !run.finished && Date.now() < deadline) await sleep(50);
       if (run.finished) return;
+      // Switch the UI from the loading spinner to its black curtain before hiding, so the X11
+      // window buffer is already pure black when shown again on exit.
+      this.emit({ type: 'playing' });
+      await sleep(60);
+      if (run.finished) return;
       this.win.hide();
       run.shown = true;
       this.gamepad.start();
@@ -336,12 +362,16 @@ export class Player {
         console.error('refresh switching failed:', error);
       }
     }
+    const delayMs = run.options.refreshSwitchDelay ?? REFRESH_SETTLE_MS;
     if (switched || (firstShow && run.options.refreshSwitching)) {
-      await this.settleDisplay(run, run.options.refreshSwitchDelay ?? REFRESH_SETTLE_MS);
+      await this.settleDisplay(run, delayMs > 0 ? Math.max(1700, delayMs) : 0);
+    } else if (firstShow && delayMs > 0) {
+      await this.settleDisplay(run, Math.min(600, delayMs));
     }
     if (run.finished) return;
+    run.ipc?.send('script-message-to', 'playdeck', 'pulse', 'stop');
     run.ipc?.send('set_property', 'pause', false);
-    this.emit({ type: 'playing' });
+    if (!firstShow) this.emit({ type: 'playing' });
   }
 
   private control(): Promise<GamescopeControl | null> {
@@ -384,9 +414,6 @@ export class Player {
       run.ipc?.send('script-message-to', 'playdeck', 'pulse');
       await sleep(Math.min(REFRESH_PULSE_MS, Math.max(1, deadline - Date.now())));
     }
-    if (!run.finished) {
-      run.ipc?.send('script-message-to', 'playdeck', 'pulse', 'stop');
-    }
   }
 
   private async restoreRefresh(): Promise<void> {
@@ -396,19 +423,37 @@ export class Player {
     this.refreshTarget = 0;
   }
 
-  private async finish(run: Run): Promise<void> {
-    if (run.finished) return;
-    run.finished = true;
+  private revealUi(run: Run, error?: string): void {
     if (this.run === run) this.run = null;
     this.gamepad.stop();
-    run.ipc?.close();
-    await this.restoreRefresh().catch((error: unknown) => console.error('refresh restore failed:', error));
     if (run.shown && !this.win.isDestroyed()) {
       this.win.show();
       this.win.focus();
     }
+    if (!run.endedEmitted) {
+      run.endedEmitted = true;
+      const delayMs = run.options.refreshSwitchDelay ?? REFRESH_SETTLE_MS;
+      const settleMs = !run.shown
+        ? 0
+        : delayMs <= 0
+          ? 0
+          : this.refreshTarget !== 0
+            ? Math.max(1400, delayMs)
+            : Math.min(700, delayMs);
+      this.emit({ type: 'ended', position: run.position, duration: run.duration, reachedEnd: run.reachedEnd, error, settleMs });
+    }
+  }
+
+  private async finish(run: Run): Promise<void> {
+    if (run.finished) return;
+    run.finished = true;
+    run.ipc?.close();
     const failedEarly = !run.shown && !run.stopping && run.child.exitCode !== 0;
     const error = run.error ?? (failedEarly ? run.output.trim().split('\n').at(-1) || `mpv exited (${run.child.exitCode})` : undefined);
-    this.emit({ type: 'ended', position: run.position, duration: run.duration, reachedEnd: run.reachedEnd, error });
+    this.revealUi(run, error);
+    await this.restoreRefresh().catch((err: unknown) => console.error('refresh restore failed:', err));
+    if (run.shown && !this.win.isDestroyed()) {
+      this.win.focus();
+    }
   }
 }

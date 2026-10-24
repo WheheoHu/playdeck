@@ -266,7 +266,7 @@ export type PlayerEvent =
   /** The viewer adjusted the subtitle size in the OSD's playback menu (percentage). */
   | { type: 'subtitleScale'; scale: number }
   /** mpv exited and the UI window is back. */
-  | { type: 'ended'; position: number; duration: number; reachedEnd: boolean; error?: string };
+  | { type: 'ended'; position: number; duration: number; reachedEnd: boolean; error?: string; settleMs?: number };
 
 export interface PlayerBridge {
   /** Starts mpv on a session. Resolves once mpv runs; progress arrives as events. */

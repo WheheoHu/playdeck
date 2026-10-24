@@ -35,15 +35,18 @@ export function invalidateItems(serverId: string): void {
 
 const OSD_KEYS = Object.keys(en).filter((key) => key.startsWith('osd.')) as (keyof typeof en)[];
 const STARTING_HINTS = { b: 'hint.cancel' };
+const CURTAIN_HINTS = { b: '' };
+const noop = () => {};
 
 const DRAW_FRAMES_MS = 1500;
+const CURTAIN_FADE_MS = 220;
 
 /**
  * gamescope switches back to the panel's native rate only on a frame drawn a while after the request,
  * and an idle page draws none, so a faint animation keeps frames coming.
  */
-function drawFrames(): void {
-  document.body.animate([{ opacity: 0.999 }, { opacity: 1 }], { duration: DRAW_FRAMES_MS });
+function drawFrames(duration = DRAW_FRAMES_MS): void {
+  document.body.animate([{ opacity: 0.999 }, { opacity: 1 }], { duration });
 }
 
 interface Current {
@@ -63,6 +66,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const { byId } = useServers();
   const nav = useNav();
   const [starting, setStarting] = useState<string | null>(null);
+  const [curtain, setCurtain] = useState<'hidden' | 'solid' | 'fading'>('hidden');
+  const curtainTimer = useRef(0);
+  const fadeTimer = useRef(0);
+  const clearCurtainTimers = useCallback(() => {
+    window.clearTimeout(curtainTimer.current);
+    window.clearTimeout(fadeTimer.current);
+  }, []);
+  useEffect(() => clearCurtainTimers, [clearCurtainTimers]);
   const active = useRef(false);
   /** The host was asked to start mpv; from then on only `ended` finishes the session. */
   const launched = useRef(false);
@@ -134,6 +145,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       bridge.player.onEvent((event: PlayerEvent) => {
         switch (event.type) {
           case 'playing': {
+            setStarting(null);
+            setCurtain('solid');
             const entry = pending.current;
             if (!entry) return;
             pending.current = null;
@@ -171,8 +184,27 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             current.current = pending.current = null;
             active.current = launched.current = false;
             setStarting(null);
-            drawFrames();
-            if (event.error && wasActive) latest.current.nav.toast(latest.current.t('player.failed', { message: event.error }));
+            clearCurtainTimers();
+            const settleMs = event.settleMs ?? 0;
+            if (settleMs > 0) {
+              setCurtain('solid');
+              drawFrames(settleMs + CURTAIN_FADE_MS);
+              curtainTimer.current = window.setTimeout(() => {
+                setCurtain('fading');
+                fadeTimer.current = window.setTimeout(() => {
+                  setCurtain('hidden');
+                  if (event.error && wasActive) {
+                    latest.current.nav.toast(latest.current.t('player.failed', { message: event.error }));
+                  }
+                }, CURTAIN_FADE_MS);
+              }, settleMs);
+            } else {
+              setCurtain('hidden');
+              drawFrames();
+              if (event.error && wasActive) {
+                latest.current.nav.toast(latest.current.t('player.failed', { message: event.error }));
+              }
+            }
             return;
           }
         }
@@ -188,6 +220,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       if (!server) return nav.toast(t('player.failed', { message: t('servers.offline') }));
       active.current = true;
       stopRequested.current = false;
+      clearCurtainTimers();
+      setCurtain('hidden');
       setStarting(playTitles(item).title);
       (async () => {
         const entry = await prepare(server, item);
@@ -213,6 +247,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         active.current = launched.current = false;
         pending.current = null;
         setStarting(null);
+        setCurtain('hidden');
         nav.toast(t('player.failed', { message: error instanceof Error ? error.message : String(error) }));
       });
     },
@@ -240,6 +275,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           <div className="spinner" />
           <p>{t('player.starting', { title: starting })}</p>
         </FocusScope>
+      )}
+      {curtain !== 'hidden' && (
+        <div className={curtain === 'fading' ? 'player-curtain fading' : 'player-curtain'}>
+          {curtain === 'solid' && <FocusScope onBack={noop} hints={CURTAIN_HINTS} />}
+        </div>
       )}
     </PlaybackContext.Provider>
   );

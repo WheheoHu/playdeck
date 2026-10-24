@@ -61,6 +61,7 @@ local state = {
   next_card = nil, -- { remaining = seconds or nil without autoplay }
   next_cancelled = false,
   stop_armed = false, -- B was pressed once; again within STOP_WINDOW stops
+  stop_releasing = false, -- second B is held; quit fires on key-up so B is not down during handoff
 }
 
 -- Read rates in bits/s, false while the cache was not reading (full, or the whole file is in).
@@ -75,8 +76,31 @@ local main = mp.create_osd_overlay('ass-events')
 local measurer = mp.create_osd_overlay('ass-events')
 local pulse = mp.create_osd_overlay('ass-events')
 local pulse_tick = false
-shade.z, main.z, pulse.z = 0, 1, -1
+local curtain = false
+shade.z, main.z, pulse.z = 0, 1, 10
 measurer.hidden, measurer.compute_bounds = true, true
+
+local function show_curtain()
+  if not curtain then
+    curtain = true
+    mp.set_property_bool('sub-visibility', false)
+  end
+  pulse_tick = not pulse_tick
+  pulse.res_x, pulse.res_y = res_x, res_y
+  pulse.data = string.format(
+    '{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H00&\\p1}m -200 -200 l 4000 -200 l 4000 2000 l -200 2000{\\p0}\n'
+      .. '{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H010101&\\1a&H%s&\\p1}m 0 0 l 1 0 l 1 1 l 0 1{\\p0}',
+    pulse_tick and 'FE' or 'FD')
+  pulse:update()
+end
+
+local function hide_curtain()
+  if not curtain then return end
+  curtain = false
+  pulse.data = ''
+  pulse:update()
+  mp.set_property_bool('sub-visibility', true)
+end
 
 -- Text and strings ---------------------------------------------------------------------------------
 
@@ -276,8 +300,19 @@ local function toast(body)
   draw()
 end
 
+local quitting = false
+
 local function quit()
-  mp.commandv('quit')
+  if quitting then return end
+  quitting = true
+  if stop_timer then stop_timer:kill() end
+  state.osd, state.menu, state.stop_armed, state.stop_releasing, state.next_card, state.toast = false, nil, false, false, nil, nil
+  mp.set_property_bool('pause', true)
+  show_curtain()
+  draw()
+  emit({ type = 'stop' })
+  -- Fallback when running outside the Electron host (e.g. local test rig).
+  mp.add_timeout(0.5, function() mp.commandv('quit') end)
 end
 
 local function arm_stop()
@@ -1018,12 +1053,26 @@ on_press('confirm', function()
   draw()
 end)
 
-on_press('back', function()
-  if not session then return end
+mp.add_key_binding(nil, 'back', function(event)
+  if not session or quitting then return end
+  if event.event == 'up' then
+    if state.stop_releasing then
+      state.stop_releasing = false
+      return quit()
+    end
+    return
+  end
+  if event.event ~= 'press' and event.event ~= 'down' then return end
   if state.menu then
     close_menu()
   elseif state.stop_armed then
-    return quit()
+    if event.event == 'press' then return quit() end
+    -- Act on button release so the physical B button is no longer held during the window handoff.
+    state.stop_armed, state.stop_releasing = false, true
+    mp.set_property_bool('pause', true)
+    show_curtain()
+    if stop_timer then stop_timer:kill() end
+    stop_timer = mp.add_timeout(0.4, quit)
   elseif state.next_card then
     cancel_next()
   elseif state.osd then
@@ -1035,7 +1084,7 @@ on_press('back', function()
     arm_stop()
   end
   draw()
-end)
+end, { complex = true })
 
 on_press('play-pause', function()
   if not session or loading_next then return end
@@ -1094,13 +1143,14 @@ local function load_session(file)
     if marker.kind == 'credits' then final_credits = marker end
   end
   state.menu, state.prompt, state.scrub, state.next_card, state.next_cancelled = nil, nil, nil, nil, false
-  state.dismissed, state.skipped, state.stop_armed = {}, {}, false
+  state.dismissed, state.skipped, state.stop_armed, state.stop_releasing = {}, {}, false, false
   props.pos, props.duration, props.eof = session.start, nil, false
   -- The panel's switch is the viewer's from the first video on; later sessions may predate a change.
   if net.on == nil then net.on = session.networkMonitor == true end
   net.samples, net.sum, net.count, net.rate, net.last = {}, 0, 0, nil, nil
   mp.set_property_native('http-header-fields', session.httpHeaders or {})
   mp.set_property_bool('pause', true)
+  show_curtain()
   local options = { ['force-media-title'] = session.title or '' }
   if session.start and session.start > 0 then options.start = string.format('%.3f', session.start) end
   mp.command_native({ name = 'loadfile', url = session.url, flags = 'replace', options = options })
@@ -1108,19 +1158,15 @@ end
 
 mp.register_script_message('load', load_session)
 
--- gamescope switches refresh rates only while the focused window presents frames; an imperceptible
--- 1x1 overlay update forces vo=gpu-next to present frames while mpv stays paused during handoff.
+-- gamescope switches refresh rates only while the focused window presents frames; a full-screen
+-- black curtain with an imperceptible 1x1 pixel toggle forces vo=gpu-next to present frames while
+-- masking the panel's mode-switch blanking.
 mp.register_script_message('pulse', function(mode)
   if mode == 'stop' then
-    pulse.data = ''
-    pulse:update()
-    return
+    hide_curtain()
+  else
+    show_curtain()
   end
-  pulse_tick = not pulse_tick
-  pulse.res_x, pulse.res_y = res_x, res_y
-  pulse.data = string.format('{\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H%s&\\p1}m 0 0 l 1 0 l 1 1 l 0 1{\\p0}',
-    pulse_tick and 'FE' or 'FD')
-  pulse:update()
 end)
 
 mp.register_event('file-loaded', function()
@@ -1157,6 +1203,7 @@ end)
 
 mp.observe_property('pause', 'bool', function(_, value)
   props.paused = value
+  if not value and not quitting then hide_curtain() end
   if state.osd then arm_hide() end
   draw()
 end)

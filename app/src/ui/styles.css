@@ -1177,11 +1177,28 @@ p {
 /* Overlays */
 /* Covers the UI from Play until mpv has the screen, and while it has it. */
 .player-starting {
+  position: fixed;
+  inset: 0;
   z-index: 1500;
   place-content: center;
   gap: 20px;
-  background: rgb(5 5 8 / 96%);
+  background: #000;
   font-size: 18px;
+}
+
+/* Pure black curtain held across refresh-rate and HDR/SDR display mode switches. */
+.player-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: #000;
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 220ms ease-out;
+}
+
+.player-curtain.fading {
+  opacity: 0;
 }
 
 .spinner {
