@@ -46,11 +46,13 @@ interface FocusScopeProps {
   onAction?: (action: Action) => boolean;
   /** Button hints for the whole scope; B reads "Back" by default when `onBack` is set. */
   hints?: Hints;
+  /** Wraps Up from the topmost row to the bottommost row, and Down from the bottommost to the topmost. */
+  wrapVertical?: boolean;
   hidden?: boolean;
 }
 
 /** A focus layer. The most recently mounted scope receives input. */
-export function FocusScope({ children, className, onBack, onAction, hints, hidden }: FocusScopeProps) {
+export function FocusScope({ children, className, onBack, onAction, hints, wrapVertical, hidden }: FocusScopeProps) {
   const manager = useFocusManager();
   const root = useRef<HTMLDivElement>(null);
   const handlers = useRef({ onBack, onAction, hints });
@@ -59,6 +61,7 @@ export function FocusScope({ children, className, onBack, onAction, hints, hidde
   useLayoutEffect(() => {
     const scope = {
       root: root.current!,
+      wrapVertical,
       onBack: () => {
         handlers.current.onBack?.();
         return Boolean(handlers.current.onBack);
@@ -68,7 +71,7 @@ export function FocusScope({ children, className, onBack, onAction, hints, hidde
     };
     manager.pushScope(scope);
     return () => manager.removeScope(scope);
-  }, [manager]);
+  }, [manager, wrapVertical]);
 
   const hintsKey = JSON.stringify(hints ?? null);
   useEffect(() => manager.notify(), [manager, hintsKey]);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type {
   AudioLanguage,
   LanguageSetting,
@@ -12,7 +12,10 @@ import { libraryId } from '../../core/plex/library';
 import type { Session } from '../../core/session';
 import { getWebDavCatalog } from '../../core/webdav/scanner';
 import { useApp } from '../AppContext';
-import { FocusButton, FocusScope } from '../focus/react';
+import { Avatar } from '../components/Avatar';
+import { Glyph } from '../components/Hints';
+import { FocusButton, FocusScope, useFocusManager } from '../focus/react';
+import type { Action } from '../input';
 import { useSections } from '../library/LibrariesScreen';
 import { useServers } from '../servers';
 import { ServerStatusList } from './Servers';
@@ -30,6 +33,24 @@ interface SettingsProps {
 }
 
 const SETTINGS_HINTS = { b: 'hint.close' };
+
+const SETTINGS_TABS = ['general', 'playback', 'libraryServer', 'user'] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+function SettingsTabBar({ tab, onTab }: { tab: SettingsTab; onTab: (tab: SettingsTab) => void }) {
+  const { t } = useApp();
+  return (
+    <nav className="settings-tabs">
+      <Glyph button="lb" />
+      {SETTINGS_TABS.map((name) => (
+        <span key={name} className={name === tab ? 'tab active' : 'tab'} onClick={() => onTab(name)}>
+          {t(`settings.tabs.${name}`)}
+        </span>
+      ))}
+      <Glyph button="rb" />
+    </nav>
+  );
+}
 
 function HomeLibraries() {
   const { settings, updateSettings, t } = useApp();
@@ -170,12 +191,14 @@ function OptionGroup<T extends string | number>({
   note,
   value,
   options,
+  autoFocus,
   onSelect,
 }: {
   title: string;
   note?: string;
   value: T;
   options: [T, string][];
+  autoFocus?: boolean;
   onSelect: (next: T) => void;
 }) {
   return (
@@ -187,12 +210,40 @@ function OptionGroup<T extends string | number>({
           <FocusButton
             key={String(option)}
             className={value === option ? 'option selected' : 'option'}
+            autoFocus={autoFocus && value === option}
             onSelect={() => onSelect(option)}
           >
             {label}
           </FocusButton>
         ))}
       </div>
+    </>
+  );
+}
+
+function GeneralSettings() {
+  const { settings, updateSettings, t } = useApp();
+  const languages: [LanguageSetting, string][] = [
+    ['system', t('settings.language.system')],
+    ...Object.entries(LOCALES).map(([locale, { name }]) => [locale as LanguageSetting, name] as [LanguageSetting, string]),
+  ];
+
+  return (
+    <>
+      <OptionGroup
+        title={t('settings.language')}
+        value={settings.language}
+        options={languages}
+        autoFocus
+        onSelect={(language) => updateSettings({ language })}
+      />
+
+      <OptionGroup
+        title={t('settings.uiScale')}
+        value={settings.uiScale}
+        options={UI_SCALES.map((scale) => [scale, `${scale}%`])}
+        onSelect={(uiScale) => updateSettings({ uiScale })}
+      />
     </>
   );
 }
@@ -210,6 +261,7 @@ function PlaybackSettings() {
         note={t('settings.tracksNote')}
         value={settings.audioLanguage}
         options={AUDIO_LANGUAGES.map(([code, key]) => [code, t(key)])}
+        autoFocus
         onSelect={(audioLanguage) => updateSettings({ audioLanguage })}
       />
 
@@ -265,6 +317,84 @@ function PlaybackSettings() {
   );
 }
 
+function LibraryServerSettings({
+  hasPlexAccount,
+  webdavLibraries,
+  onOpenAddWebDav,
+  onRemoveWebDav,
+}: {
+  hasPlexAccount: boolean;
+  webdavLibraries: WebDavLibraryConfig[];
+  onOpenAddWebDav: () => void;
+  onRemoveWebDav: (id: string) => void;
+}) {
+  const { t } = useApp();
+  return (
+    <>
+      <HomeLibraries />
+
+      <WebDavLibrariesSection libraries={webdavLibraries} onOpenAdd={onOpenAddWebDav} onRemove={onRemoveWebDav} />
+
+      {hasPlexAccount && (
+        <>
+          <h3>{t('settings.servers')}</h3>
+          <ServerStatusList />
+        </>
+      )}
+    </>
+  );
+}
+
+function UserSettings({
+  session,
+  hasPlexAccount,
+  onSwitchUser,
+  onSignOut,
+  onSignInPlex,
+}: {
+  session: Session;
+  hasPlexAccount: boolean;
+  onSwitchUser: () => void;
+  onSignOut: () => void;
+  onSignInPlex?: () => void;
+}) {
+  const { t } = useApp();
+  const canSwitchUser = session.homeUsers.length > 1;
+
+  return (
+    <>
+      <div className="settings-user-card">
+        <Avatar name={session.user.title} src={session.user.thumb} size={64} />
+        <div className="settings-user-info">
+          <div className="settings-user-name">{session.user.title}</div>
+          <div className="muted">
+            {hasPlexAccount ? t('settings.signedInAs', { name: session.account.title }) : t('settings.webdavOnlyMode')}
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-actions">
+        {canSwitchUser && (
+          <FocusButton autoFocus onSelect={onSwitchUser}>
+            {t('settings.switchUser')}
+          </FocusButton>
+        )}
+        {hasPlexAccount ? (
+          <FocusButton autoFocus={!canSwitchUser} onSelect={onSignOut}>
+            {t('settings.signOut')}
+          </FocusButton>
+        ) : (
+          onSignInPlex && (
+            <FocusButton autoFocus={!canSwitchUser} onSelect={onSignInPlex}>
+              {t('signIn.title')}
+            </FocusButton>
+          )
+        )}
+      </div>
+    </>
+  );
+}
+
 export function SettingsOverlay({
   session,
   webdavLibraries,
@@ -275,68 +405,64 @@ export function SettingsOverlay({
   onSignOut,
   onSignInPlex,
 }: SettingsProps) {
-  const { plex, settings, updateSettings, t } = useApp();
+  const { plex, t } = useApp();
+  const manager = useFocusManager();
+  const [tab, setTabState] = useState<SettingsTab>('general');
   const [addingWebDav, setAddingWebDav] = useState(false);
   const hasPlexAccount = Boolean(session.account.token);
-  const languages: [LanguageSetting, string][] = [
-    ['system', t('settings.language.system')],
-    ...Object.entries(LOCALES).map(([locale, { name }]) => [locale as LanguageSetting, name] as [LanguageSetting, string]),
-  ];
+
+  const setTab = useCallback(
+    (next: SettingsTab | ((current: SettingsTab) => SettingsTab)) => {
+      manager.resetInitial();
+      setTabState(next);
+    },
+    [manager],
+  );
+
+  const onAction = useCallback(
+    (action: Action) => {
+      if (action === 'previous-tab' || action === 'next-tab') {
+        setTab(
+          (current) =>
+            SETTINGS_TABS[(SETTINGS_TABS.indexOf(current) + (action === 'next-tab' ? 1 : SETTINGS_TABS.length - 1)) % SETTINGS_TABS.length],
+        );
+        return true;
+      }
+      return false;
+    },
+    [setTab],
+  );
 
   return (
-    <FocusScope className="overlay" onBack={onClose} hints={SETTINGS_HINTS}>
-      <div className="settings-panel" data-scroll="y">
-        <div className="scroll-content">
-          <h2>{t('settings.title')}</h2>
-          <p className="muted">
-            {hasPlexAccount ? t('settings.signedInAs', { name: session.account.title }) : t('settings.webdavOnlyMode')} · v
-            {plex.app.version}
-          </p>
-
-          <h3>{t('settings.language')}</h3>
-          <div className="option-row">
-            {languages.map(([value, label]) => (
-              <FocusButton
-                key={value}
-                className={settings.language === value ? 'option selected' : 'option'}
-                autoFocus={settings.language === value}
-                onSelect={() => updateSettings({ language: value })}
-              >
-                {label}
-              </FocusButton>
-            ))}
+    <FocusScope className="overlay" onBack={onClose} onAction={onAction} hints={SETTINGS_HINTS} wrapVertical>
+      <div className="settings-panel">
+        <div className="settings-header">
+          <div className="settings-title-row">
+            <h2>{t('settings.title')}</h2>
+            <span className="muted">v{plex.app.version}</span>
           </div>
-
-          <OptionGroup
-            title={t('settings.uiScale')}
-            value={settings.uiScale}
-            options={UI_SCALES.map((scale) => [scale, `${scale}%`])}
-            onSelect={(uiScale) => updateSettings({ uiScale })}
-          />
-
-          <PlaybackSettings />
-
-          <HomeLibraries />
-
-          <WebDavLibrariesSection
-            libraries={webdavLibraries}
-            onOpenAdd={() => setAddingWebDav(true)}
-            onRemove={(id) => void onRemoveWebDav(id)}
-          />
-
-          {hasPlexAccount && (
-            <>
-              <h3>{t('settings.servers')}</h3>
-              <ServerStatusList />
-            </>
-          )}
-
-          <div className="settings-actions">
-            {session.homeUsers.length > 1 && <FocusButton onSelect={onSwitchUser}>{t('settings.switchUser')}</FocusButton>}
-            {hasPlexAccount ? (
-              <FocusButton onSelect={onSignOut}>{t('settings.signOut')}</FocusButton>
-            ) : (
-              onSignInPlex && <FocusButton onSelect={onSignInPlex}>{t('signIn.title')}</FocusButton>
+          <SettingsTabBar tab={tab} onTab={setTab} />
+        </div>
+        <div key={tab} className="settings-body" data-scroll="y">
+          <div className="scroll-content">
+            {tab === 'general' && <GeneralSettings />}
+            {tab === 'playback' && <PlaybackSettings />}
+            {tab === 'libraryServer' && (
+              <LibraryServerSettings
+                hasPlexAccount={hasPlexAccount}
+                webdavLibraries={webdavLibraries}
+                onOpenAddWebDav={() => setAddingWebDav(true)}
+                onRemoveWebDav={(id) => void onRemoveWebDav(id)}
+              />
+            )}
+            {tab === 'user' && (
+              <UserSettings
+                session={session}
+                hasPlexAccount={hasPlexAccount}
+                onSwitchUser={onSwitchUser}
+                onSignOut={onSignOut}
+                onSignInPlex={onSignInPlex}
+              />
             )}
           </div>
         </div>

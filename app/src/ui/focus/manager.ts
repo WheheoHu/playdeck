@@ -37,6 +37,7 @@ export interface Scope {
   onBack?: () => boolean;
   onAction?: (action: Action) => boolean;
   hints?: () => Hints;
+  wrapVertical?: boolean;
   last?: FocusTarget;
 }
 
@@ -288,6 +289,7 @@ export class FocusManager {
       toRect(current.getBoundingClientRect()),
       candidates.map((element) => toRect(element.getBoundingClientRect())),
       direction,
+      scope.wrapVertical,
     );
     if (index < 0) return;
     // Entering a [data-focus-group] from outside lands on its [data-focus-entry], e.g. the selected tab.

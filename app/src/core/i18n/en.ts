@@ -188,6 +188,10 @@ export const en = {
   'servers.refresh': 'Refresh',
 
   'settings.title': 'Settings',
+  'settings.tabs.general': 'General',
+  'settings.tabs.playback': 'Playback',
+  'settings.tabs.libraryServer': 'Library & Server',
+  'settings.tabs.user': 'User',
   'settings.language': 'Language',
   'settings.uiScale': 'UI scale',
   'settings.servers': 'Servers',

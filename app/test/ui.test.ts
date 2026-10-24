@@ -77,4 +77,14 @@ describe('spatial navigation', () => {
     expect(pickNext(c, all, 'right')).toBe(-1);
     expect(pickNext(a, all, 'up')).toBe(-1);
   });
+
+  it('wraps vertically between the topmost and bottommost rows when enabled', () => {
+    expect(pickNext(a, all, 'up', true)).toBe(3);
+    expect(pickNext(c, all, 'up', true)).toBe(4);
+    expect(pickNext(d, all, 'down', true)).toBe(0);
+    expect(pickNext(e, all, 'down', true)).toBe(2);
+    // Single row does not wrap onto itself vertically.
+    expect(pickNext(a, [a, b, c], 'up', true)).toBe(-1);
+    expect(pickNext(a, [a, b, c], 'down', true)).toBe(-1);
+  });
 });

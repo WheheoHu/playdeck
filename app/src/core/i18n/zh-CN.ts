@@ -189,6 +189,10 @@ export const zhCN: Messages = {
   'servers.refresh': '刷新',
 
   'settings.title': '设置',
+  'settings.tabs.general': '通用',
+  'settings.tabs.playback': '播放',
+  'settings.tabs.libraryServer': '媒体库与服务器',
+  'settings.tabs.user': '用户',
   'settings.language': '语言',
   'settings.uiScale': '界面缩放',
   'settings.servers': '服务器',

@@ -21,7 +21,7 @@ function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number): b
 }
 
 /** Index of the best candidate in `direction` from `from`, or -1. */
-export function pickNext(from: Rect, candidates: Rect[], direction: Direction): number {
+export function pickNext(from: Rect, candidates: Rect[], direction: Direction, wrapVertical = false): number {
   const fromX = (from.left + from.right) / 2;
   const fromY = (from.top + from.bottom) / 2;
   const horizontal = direction === 'left' || direction === 'right';
@@ -64,5 +64,28 @@ export function pickNext(from: Rect, candidates: Rect[], direction: Direction): 
       bestIndex = index;
     }
   });
+
+  if (bestIndex < 0 && wrapVertical && !horizontal) {
+    const opposite: Direction = direction === 'up' ? 'down' : 'up';
+    if (pickNext(from, candidates, opposite, false) < 0) return -1;
+    const height = from.bottom - from.top;
+    if (direction === 'up') {
+      const maxBottom = Math.max(...candidates.map((r) => r.bottom));
+      return pickNext(
+        { left: from.left, right: from.right, top: maxBottom + 10, bottom: maxBottom + 10 + height },
+        candidates,
+        'up',
+        false,
+      );
+    }
+    const minTop = Math.min(...candidates.map((r) => r.top));
+    return pickNext(
+      { left: from.left, right: from.right, top: minTop - 10 - height, bottom: minTop - 10 },
+      candidates,
+      'down',
+      false,
+    );
+  }
+
   return bestIndex;
 }
