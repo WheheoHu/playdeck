@@ -2,6 +2,7 @@ import type { AudioLanguage, PlaySession, SessionTrack, Settings, SubtitleLangua
 import { episodeLabel } from './format';
 import { type PlexContext, plexHeaders } from './plex/client';
 import type { LibraryServer, MediaItem, MediaPart, MediaStream, MediaVersion } from './plex/library';
+import { basicAuthHeader, buildWebDavUrl } from './webdav/client';
 
 /** Plex's own threshold: past 90% an item counts as watched. */
 export const WATCHED_FRACTION = 0.9;
@@ -65,7 +66,8 @@ function sessionTrack(stream: MediaStream, server: LibraryServer): SessionTrack 
   if (stream.kind === 'video') return null;
   if (stream.key) {
     if (stream.kind !== 'subtitle') return null;
-    return { id: stream.id, kind: 'subtitle', title: stream.title, language: stream.language, url: `${server.baseUrl}${stream.key}`, selected: stream.selected };
+    const url = server.kind === 'webdav' ? buildWebDavUrl(server.baseUrl, stream.key) : `${server.baseUrl}${stream.key}`;
+    return { id: stream.id, kind: 'subtitle', title: stream.title, language: stream.language, url, selected: stream.selected };
   }
   if (stream.index === undefined) return null;
   return { id: stream.id, kind: stream.kind, title: stream.title, language: stream.language, ffIndex: stream.index, selected: stream.selected };
@@ -171,12 +173,35 @@ export interface SessionOptions {
  */
 export function buildSession(context: PlexContext, server: LibraryServer, playable: Playable, options: SessionOptions): PlaySession {
   const { item, part, version } = playable;
-  const headers = plexHeaders(context, server.token);
-  delete headers.Accept;
   const video = part.streams.find((stream) => stream.kind === 'video');
   const duration = version.duration ?? item.duration;
   // Resuming within the last few seconds would only show the credits' end; start over instead.
   const offset = options.fromStart || !item.viewOffset || (duration && item.viewOffset > duration - 10_000) ? 0 : item.viewOffset;
+
+  if (server.kind === 'webdav') {
+    const auth = basicAuthHeader(server.webdav?.username, server.webdav?.password);
+    return {
+      url: buildWebDavUrl(server.baseUrl, part.key),
+      httpHeaders: auth ? [`Authorization: ${auth}`] : [],
+      start: offset / 1000,
+      ...playTitles(item),
+      frameRate: video?.frameRate,
+      bitrate: version.bitrate,
+      fileSize: part.size,
+      audioLanguage: options.settings.audioLanguage,
+      subtitleLanguage: options.settings.subtitleLanguage,
+      tracks: sessionTracks(part, server, options.settings),
+      markers: item.markers.map((marker) => ({ kind: marker.kind, start: marker.start / 1000, end: marker.end / 1000 })),
+      next: options.next ? playTitles(options.next) : undefined,
+      autoSkipMarkers: options.settings.autoSkipMarkers,
+      autoplayNext: options.settings.autoplayNext,
+      networkMonitor: options.settings.networkMonitor,
+      strings: options.strings,
+    };
+  }
+
+  const headers = plexHeaders(context, server.token);
+  delete headers.Accept;
   return {
     url: `${server.baseUrl}${part.key}`,
     httpHeaders: Object.entries(headers).map(([name, value]) => `${name}: ${value}`),

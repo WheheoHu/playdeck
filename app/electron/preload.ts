@@ -10,6 +10,7 @@ const bridge: PlayDeckBridge = {
   writeCredentials: (credentials) => ipcRenderer.invoke(CHANNELS.writeCredentials, credentials),
   readCache: () => ipcRenderer.invoke(CHANNELS.readCache),
   writeCache: (cache) => ipcRenderer.invoke(CHANNELS.writeCache, cache),
+  webdavRequest: (request) => ipcRenderer.invoke(CHANNELS.webdavRequest, request),
   setUiScale: (scale) => {
     webFrame.setZoomFactor(Math.max(0.9, Math.min(1.5, scale / 100)));
     window.dispatchEvent(new Event('resize'));

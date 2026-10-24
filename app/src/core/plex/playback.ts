@@ -1,3 +1,4 @@
+import { getWebDavAllLeaves, recordWebDavTimeline } from '../webdav/scanner';
 import { type PlexContext, requestJson } from './client';
 import { type LibraryServer, type MediaItem, type RawMetadata, parseItem } from './library';
 
@@ -12,6 +13,10 @@ export interface TimelineReport {
 }
 
 export async function reportTimeline(context: PlexContext, server: LibraryServer, report: TimelineReport): Promise<void> {
+  if (server.kind === 'webdav') {
+    recordWebDavTimeline(server.id, report.ratingKey, report.state, report.time, report.duration);
+    return;
+  }
   const params = new URLSearchParams({
     ratingKey: report.ratingKey,
     key: `/library/metadata/${report.ratingKey}`,
@@ -34,6 +39,7 @@ export async function selectStreams(
   partId: number,
   choice: { audio?: number; subtitle?: number },
 ): Promise<void> {
+  if (server.kind === 'webdav') return;
   const params = new URLSearchParams({ allParts: '1' });
   if (choice.audio !== undefined) params.set('audioStreamID', String(choice.audio));
   if (choice.subtitle !== undefined) params.set('subtitleStreamID', String(choice.subtitle));
@@ -43,6 +49,9 @@ export async function selectStreams(
 /** The episode after `episode` in its show, across seasons; specials (season 0) are skipped. */
 export async function fetchNextEpisode(context: PlexContext, server: LibraryServer, episode: MediaItem): Promise<MediaItem | null> {
   if (episode.type !== 'episode' || !episode.grandparentRatingKey) return null;
+  if (server.kind === 'webdav') {
+    return nextEpisodeIn(getWebDavAllLeaves(server.id, episode.grandparentRatingKey), episode);
+  }
   const response = await requestJson<{ MediaContainer?: { Metadata?: RawMetadata[] } }>(
     context,
     `${server.baseUrl}/library/metadata/${episode.grandparentRatingKey}/allLeaves`,

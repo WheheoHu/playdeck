@@ -16,6 +16,33 @@ export interface ManualServer {
   url: string;
 }
 
+export type WebDavLibraryType = 'movie' | 'show' | 'mixed';
+
+export interface WebDavLibraryConfig {
+  id: string;
+  name: string;
+  /** Server origin or base URL without trailing slash, e.g. "http://192.168.1.10:5244". */
+  baseUrl: string;
+  /** Root folder path starting with "/", e.g. "/dav/Movies". */
+  rootPath: string;
+  username?: string;
+  password?: string;
+  type: WebDavLibraryType;
+}
+
+export interface WebDavRequest {
+  url: string;
+  method: 'PROPFIND' | 'GET';
+  headers?: Record<string, string>;
+  body?: string;
+  timeoutMs?: number;
+}
+
+export interface WebDavResponse {
+  status: number;
+  body: string;
+}
+
 export type LibrarySort = 'title' | 'added' | 'released' | 'rating' | 'watched';
 
 /** User-editable settings, stored as human-readable JSON. */
@@ -123,6 +150,8 @@ export interface Credentials {
   homeUsers?: HomeUser[];
   /** The user's servers with their access tokens. */
   servers?: { userUuid: string; list: PlexServer[] };
+  /** User-configured WebDAV libraries, kept in 0600 credentials storage because they may carry passwords. */
+  webdavLibraries?: WebDavLibraryConfig[];
 }
 
 export interface RememberedConnection {
@@ -130,9 +159,17 @@ export interface RememberedConnection {
   networkClass: 'local' | 'remote';
 }
 
+export interface WebDavWatchEntry {
+  viewOffset?: number;
+  viewCount?: number;
+  lastViewedAt?: number;
+  duration?: number;
+}
+
 /** Disposable state that only speeds things up; losing it is harmless. */
 export interface AppCache {
   connections: Record<string, RememberedConnection>;
+  webdavWatch?: Record<string, WebDavWatchEntry>;
 }
 
 export const DEFAULT_CACHE: AppCache = { connections: {} };
@@ -184,6 +221,11 @@ export interface PlaySession {
   frameRate?: number;
   /** The file's average bit rate as the server reports it, in kbps; the network panel compares against it. */
   bitrate?: number;
+  /** The file's byte size when known (e.g. from WebDAV PROPFIND), used to derive bitrate once duration is known. */
+  fileSize?: number;
+  /** Preferred audio/subtitle languages for unprobed files (e.g. WebDAV) whose embedded tracks are discovered by mpv. */
+  audioLanguage?: AudioLanguage;
+  subtitleLanguage?: SubtitleLanguage;
   tracks: SessionTrack[];
   markers: SessionMarker[];
   /** The episode that follows, for the "next episode" card. */
@@ -240,6 +282,7 @@ export interface PlayDeckBridge {
   writeCredentials(credentials: Credentials): Promise<void>;
   readCache(): Promise<AppCache>;
   writeCache(cache: AppCache): Promise<void>;
+  webdavRequest(request: WebDavRequest): Promise<WebDavResponse>;
   setUiScale(scale: number): void;
   quit(): void;
   player: PlayerBridge;
@@ -253,6 +296,7 @@ export const CHANNELS = {
   writeCredentials: 'playdeck:credentials:write',
   readCache: 'playdeck:cache:read',
   writeCache: 'playdeck:cache:write',
+  webdavRequest: 'playdeck:webdav:request',
   quit: 'playdeck:quit',
   playerStart: 'playdeck:player:start',
   playerNext: 'playdeck:player:next',

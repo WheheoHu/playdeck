@@ -369,9 +369,119 @@ local function session_tracks(kind)
 end
 
 -- Plex stream indexes are FFmpeg's, which mpv reports as ff-index; failing that, the order matches.
+-- For unprobed sources (such as WebDAV), embedded tracks are discovered directly from mpv's track-list.
+local function lang_score(track, pref)
+  if not pref or pref == '' or pref == 'off' then return 0 end
+  local tag = (track.lang or ''):lower()
+  local text = ((track.title or '') .. ' ' .. tag):lower()
+  local is_zh = tag == 'zh' or tag == 'zho' or tag == 'chi' or tag:find('^zh%-')
+    or text:find('chinese') or text:find('中文') or text:find('国语') or text:find('粤语') or text:find('简') or text:find('繁')
+  local is_hans = tag == 'zh-hans' or tag == 'zh-cn' or tag == 'zh-sg'
+    or text:find('simplified') or text:find('chs') or text:find('hans') or text:find('简')
+  local is_hant = tag == 'zh-hant' or tag == 'zh-tw' or tag == 'zh-hk'
+    or text:find('traditional') or text:find('cht') or text:find('hant') or text:find('繁')
+
+  local base = 0
+  if pref == 'ja' and (tag == 'ja' or tag == 'jpn' or tag:find('^ja%-') or text:find('japanese') or text:find('日本') or text:find('日语')) then
+    base = 20
+  elseif pref == 'en' and (tag == 'en' or tag == 'eng' or tag:find('^en%-') or text:find('english')) then
+    base = 20
+  elseif pref == 'ko' and (tag == 'ko' or tag == 'kor' or tag:find('^ko%-') or text:find('korean') or text:find('한국') or text:find('韩语')) then
+    base = 20
+  elseif pref == 'zh' and is_zh then
+    base = 20
+  elseif pref == 'zh-Hans' then
+    if is_hans then base = 20 elseif is_zh and not is_hant then base = 10 end
+  elseif pref == 'zh-Hant' then
+    if is_hant then base = 20 elseif is_zh and not is_hans then base = 10 end
+  end
+  if base == 0 then return 0 end
+  return base + (track.default and 1 or 0) - (track['hearing-impaired'] and 2 or 0) - (track.forced and 5 or 0)
+end
+
+local function compose_track_title(track, fallback_index)
+  local parts = {}
+  if track.title and track.title ~= '' then parts[#parts + 1] = track.title end
+  if track.lang and track.lang ~= '' and (not track.title or not track.title:lower():find(track.lang:lower(), 1, true)) then
+    parts[#parts + 1] = track.lang
+  end
+  if track.codec and track.codec ~= '' then parts[#parts + 1] = track.codec:upper() end
+  if #parts == 0 then return 'Track ' .. tostring(fallback_index) end
+  return table.concat(parts, ' · ')
+end
+
+local function discover_embedded_tracks(mpv_tracks)
+  if not session then return end
+  session.tracks = session.tracks or {}
+  for _, existing in ipairs(session.tracks) do
+    if not existing.url then return end
+  end
+
+  local next_id = 10000
+  local discovered_audio, discovered_sub = {}, {}
+  for _, track in ipairs(mpv_tracks) do
+    if not track.external and (track.type == 'audio' or track.type == 'sub') then
+      next_id = next_id + 1
+      local kind = track.type == 'audio' and 'audio' or 'subtitle'
+      local entry = {
+        id = next_id,
+        kind = kind,
+        title = compose_track_title(track, track.id),
+        language = track.lang,
+        ffIndex = track['ff-index'],
+        selected = false,
+        _raw = track,
+      }
+      mapped[entry.id] = track.id
+      if kind == 'audio' then
+        discovered_audio[#discovered_audio + 1] = entry
+      else
+        discovered_sub[#discovered_sub + 1] = entry
+      end
+    end
+  end
+
+  -- Pick best audio track by preferred language, default flag, or first track.
+  if #discovered_audio > 0 then
+    local best, best_score = nil, 0
+    for _, entry in ipairs(discovered_audio) do
+      local score = lang_score(entry._raw, session.audioLanguage)
+      if score > best_score then best, best_score = entry, score end
+    end
+    if not best then
+      for _, entry in ipairs(discovered_audio) do
+        if entry._raw.default then best = entry; break end
+      end
+    end
+    best = best or discovered_audio[1]
+    best.selected = true
+  end
+
+  -- Pick best embedded subtitle track only if no sidecar subtitle was already selected.
+  local has_selected_sub = false
+  for _, existing in ipairs(session.tracks) do
+    if existing.kind == 'subtitle' and existing.selected then has_selected_sub = true end
+  end
+  if not has_selected_sub and #discovered_sub > 0 and session.subtitleLanguage and session.subtitleLanguage ~= 'off' then
+    local best, best_score = nil, 0
+    for _, entry in ipairs(discovered_sub) do
+      local score = lang_score(entry._raw, session.subtitleLanguage)
+      if score > best_score then best, best_score = entry, score end
+    end
+    if best then best.selected = true end
+  end
+
+  local combined = {}
+  for _, entry in ipairs(discovered_audio) do entry._raw = nil; combined[#combined + 1] = entry end
+  for _, entry in ipairs(discovered_sub) do entry._raw = nil; combined[#combined + 1] = entry end
+  for _, existing in ipairs(session.tracks) do combined[#combined + 1] = existing end
+  session.tracks = combined
+end
+
 local function map_tracks()
   mapped = {}
   local mpv_tracks = mp.get_property_native('track-list') or {}
+  discover_embedded_tracks(mpv_tracks)
   for kind, mpv_kind in pairs({ audio = 'audio', subtitle = 'sub' }) do
     local embedded = {}
     for _, track in ipairs(mpv_tracks) do
@@ -1020,6 +1130,12 @@ end)
 
 mp.observe_property('duration', 'number', function(_, value)
   props.duration = value
+  if session and not session.bitrate and value and value > 0 then
+    local size = session.fileSize or mp.get_property_number('file-size')
+    if size and size > 0 then
+      session.bitrate = math.floor((size * 8) / value / 1000 + 0.5)
+    end
+  end
 end)
 
 mp.observe_property('pause', 'bool', function(_, value)

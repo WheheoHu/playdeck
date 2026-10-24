@@ -1,4 +1,15 @@
-import type { LibrarySort } from '../../../shared/bridge';
+import type { LibrarySort, WebDavLibraryConfig } from '../../../shared/bridge';
+import { webdavImageProxyUrl } from '../webdav/client';
+import {
+  getWebDavChildren,
+  getWebDavContinueWatching,
+  getWebDavItem,
+  getWebDavRecentlyAdded,
+  getWebDavSectionPage,
+  getWebDavSections,
+  searchWebDav,
+  setWebDavWatched,
+} from '../webdav/scanner';
 import { type PlexContext, type RequestOptions, requestJson } from './client';
 
 /** A server PlayDeck is connected to: where to reach it and the user's token for it. */
@@ -7,6 +18,8 @@ export interface LibraryServer {
   name: string;
   baseUrl: string;
   token: string;
+  kind?: 'plex' | 'webdav';
+  webdav?: WebDavLibraryConfig;
 }
 
 export type ItemType = 'movie' | 'show' | 'season' | 'episode' | 'collection' | 'clip' | 'other';
@@ -150,8 +163,9 @@ export interface MediaItem {
 export interface LibrarySection {
   serverId: string;
   key: string;
-  type: 'movie' | 'show';
+  type: 'movie' | 'show' | 'mixed';
   title: string;
+  isWebDav?: boolean;
 }
 
 /** Identifies a library across servers, as `${serverId}/${sectionKey}` (see Settings). */
@@ -397,6 +411,7 @@ function get(context: PlexContext, server: LibraryServer, path: string, options:
 
 /** In-progress items and next episodes, honouring the server's On Deck window. */
 export async function fetchContinueWatching(context: PlexContext, server: LibraryServer, count = 20, signal?: AbortSignal) {
+  if (server.kind === 'webdav') return getWebDavContinueWatching(server.id, count);
   const response = await get(context, server, `/hubs?identifier=home.continue,home.ondeck&count=${count}`, { signal });
   return (response.MediaContainer?.Hub ?? []).flatMap((hub) => (hub.Metadata ?? []).map((raw) => parseItem(server.id, raw)));
 }
@@ -409,6 +424,7 @@ export async function fetchRecentlyAdded(
   count = 30,
   signal?: AbortSignal,
 ) {
+  if (server.kind === 'webdav') return getWebDavRecentlyAdded(server.id, type, count);
   const response = await get(context, server, `/hubs/home/recentlyAdded?type=${type}&count=${count}`, { signal });
   const container = response.MediaContainer;
   const raws = container?.Metadata ?? (container?.Hub ?? []).flatMap((hub) => hub.Metadata ?? []);
@@ -416,6 +432,7 @@ export async function fetchRecentlyAdded(
 }
 
 export async function fetchSections(context: PlexContext, server: LibraryServer, signal?: AbortSignal) {
+  if (server.kind === 'webdav') return getWebDavSections(server.id);
   const response = await get(context, server, '/library/sections', { signal });
   return (response.MediaContainer?.Directory ?? []).flatMap((directory): LibrarySection[] =>
     directory.key && directory.title && (directory.type === 'movie' || directory.type === 'show')
@@ -449,6 +466,7 @@ export async function fetchSectionPage(
   sort: LibrarySort = 'title',
   signal?: AbortSignal,
 ): Promise<{ items: MediaItem[]; totalSize: number }> {
+  if (server.kind === 'webdav') return getWebDavSectionPage(server.id, start, size, sort);
   const type = section.type === 'movie' ? 1 : 2;
   const params = new URLSearchParams({
     type: String(type),
@@ -463,6 +481,7 @@ export async function fetchSectionPage(
 }
 
 export async function fetchItem(context: PlexContext, server: LibraryServer, ratingKey: string, signal?: AbortSignal) {
+  if (server.kind === 'webdav') return getWebDavItem(server.id, ratingKey);
   const response = await get(context, server, `/library/metadata/${ratingKey}?includeMarkers=1`, { signal });
   const raw = response.MediaContainer?.Metadata?.[0];
   if (!raw) throw new Error(`item ${ratingKey} not found`);
@@ -471,6 +490,7 @@ export async function fetchItem(context: PlexContext, server: LibraryServer, rat
 
 /** Seasons of a show, or episodes of a season. */
 export async function fetchChildren(context: PlexContext, server: LibraryServer, ratingKey: string, signal?: AbortSignal) {
+  if (server.kind === 'webdav') return getWebDavChildren(server.id, ratingKey);
   const response = await get(context, server, `/library/metadata/${ratingKey}/children`, { signal });
   return (response.MediaContainer?.Metadata ?? []).map((raw) => parseItem(server.id, raw));
 }
@@ -484,6 +504,7 @@ export async function searchServer(
   limit = 20,
   signal?: AbortSignal,
 ) {
+  if (server.kind === 'webdav') return searchWebDav(server.id, query, limit);
   const params = new URLSearchParams({ query, limit: String(limit), includeCollections: '0' });
   const response = await get(context, server, `/hubs/search?${params}`, { signal });
   return (response.MediaContainer?.Hub ?? [])
@@ -493,6 +514,10 @@ export async function searchServer(
 }
 
 export async function setWatched(context: PlexContext, server: LibraryServer, ratingKey: string, watched: boolean) {
+  if (server.kind === 'webdav') {
+    setWebDavWatched(server.id, ratingKey, watched);
+    return;
+  }
   const action = watched ? 'scrobble' : 'unscrobble';
   const params = new URLSearchParams({ key: ratingKey, identifier: 'com.plexapp.plugins.library' });
   await get(context, server, `/:/${action}?${params}`);
@@ -500,6 +525,8 @@ export async function setWatched(context: PlexContext, server: LibraryServer, ra
 
 /** Server-side resized image, sized in physical pixels. Tokens go in the query because <img> has no headers. */
 export function imageUrl(server: LibraryServer, path: string, width: number, height: number, scale = 1): string {
+  if (/^https?:\/\//i.test(path) || path.startsWith('playdeck://')) return path;
+  if (server.kind === 'webdav') return webdavImageProxyUrl(server.id, server.baseUrl, path);
   const params = new URLSearchParams({
     width: String(Math.round(width * scale)),
     height: String(Math.round(height * scale)),

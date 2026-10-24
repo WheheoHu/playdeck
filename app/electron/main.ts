@@ -10,6 +10,9 @@ import {
   type PlayerOptions,
   type PlaySession,
   type Settings,
+  type WebDavLibraryConfig,
+  type WebDavRequest,
+  type WebDavResponse,
   CHANNELS,
   DEFAULT_CACHE,
   DEFAULT_SETTINGS,
@@ -25,14 +28,38 @@ const IN_GAMESCOPE = Boolean(process.env.GAMESCOPE_WAYLAND_DISPLAY);
 
 declare const __PLAYDECK_VERSION__: string | undefined;
 
+let webdavLibraries: WebDavLibraryConfig[] = [];
+
 protocol.registerSchemesAsPrivileged([
   { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 app.setName('PlayDeck');
 app.setPath('userData', path.join(os.homedir(), '.config', 'PlayDeck'));
 
+function basicAuthHeader(username?: string, password?: string): string | undefined {
+  if (!username && !password) return undefined;
+  return `Basic ${Buffer.from(`${username ?? ''}:${password ?? ''}`, 'utf8').toString('base64')}`;
+}
+
 function serveRenderer(request: Request): Promise<Response> | Response {
-  const { pathname } = new URL(request.url);
+  const parsed = new URL(request.url);
+  if (parsed.pathname === '/__webdav__') {
+    const libId = parsed.searchParams.get('lib');
+    const targetUrl = parsed.searchParams.get('url');
+    const lib = libId ? webdavLibraries.find((entry) => entry.id === libId) : undefined;
+    if (!lib || !targetUrl) return new Response('not found', { status: 404 });
+    try {
+      const baseOrigin = new URL(lib.baseUrl).origin;
+      if (new URL(targetUrl).origin !== baseOrigin) return new Response('forbidden', { status: 403 });
+    } catch {
+      return new Response('bad request', { status: 400 });
+    }
+    const headers: Record<string, string> = {};
+    const auth = basicAuthHeader(lib.username, lib.password);
+    if (auth) headers.Authorization = auth;
+    return net.fetch(targetUrl, { headers });
+  }
+  const { pathname } = parsed;
   const file = path.normalize(path.join(RENDERER_DIR, decodeURIComponent(pathname)));
   if (!file.startsWith(RENDERER_DIR + path.sep)) return new Response('forbidden', { status: 403 });
   return net.fetch(pathToFileURL(file).toString());
@@ -67,10 +94,28 @@ async function registerBridge(): Promise<void> {
   ipcMain.handle(CHANNELS.appInfo, () => appInfo);
   ipcMain.handle(CHANNELS.readSettings, () => settings.read());
   ipcMain.handle(CHANNELS.writeSettings, (_event, value: Settings) => settings.write(value));
-  ipcMain.handle(CHANNELS.readCredentials, () => credentials.read());
-  ipcMain.handle(CHANNELS.writeCredentials, (_event, value: Credentials) => credentials.write(value));
+  ipcMain.handle(CHANNELS.readCredentials, async () => {
+    const loaded = await credentials.read();
+    webdavLibraries = loaded.webdavLibraries ?? [];
+    return loaded;
+  });
+  ipcMain.handle(CHANNELS.writeCredentials, async (_event, value: Credentials) => {
+    webdavLibraries = value.webdavLibraries ?? [];
+    await credentials.write(value);
+  });
   ipcMain.handle(CHANNELS.readCache, () => cache.read());
   ipcMain.handle(CHANNELS.writeCache, (_event, value: AppCache) => cache.write(value));
+  ipcMain.handle(CHANNELS.webdavRequest, async (_event, request: WebDavRequest): Promise<WebDavResponse> => {
+    const timeout = AbortSignal.timeout(request.timeoutMs ?? 15_000);
+    const response = await net.fetch(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      signal: timeout,
+    });
+    const body = await response.text();
+    return { status: response.status, body };
+  });
   ipcMain.on(CHANNELS.quit, () => app.quit());
 }
 
