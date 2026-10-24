@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { BRIDGE_VERSION, CHANNELS, type PlayDeckBridge, type PlayerEvent } from '../shared/bridge';
 
 const bridge: PlayDeckBridge = {
@@ -10,6 +10,10 @@ const bridge: PlayDeckBridge = {
   writeCredentials: (credentials) => ipcRenderer.invoke(CHANNELS.writeCredentials, credentials),
   readCache: () => ipcRenderer.invoke(CHANNELS.readCache),
   writeCache: (cache) => ipcRenderer.invoke(CHANNELS.writeCache, cache),
+  setUiScale: (scale) => {
+    webFrame.setZoomFactor(Math.max(0.9, Math.min(1.5, scale / 100)));
+    window.dispatchEvent(new Event('resize'));
+  },
   quit: () => ipcRenderer.send(CHANNELS.quit),
   player: {
     start: (session, options) => ipcRenderer.invoke(CHANNELS.playerStart, session, options),

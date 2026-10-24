@@ -7,6 +7,10 @@
 export const BRIDGE_VERSION = 2;
 
 export type LanguageSetting = 'system' | 'en' | 'zh-CN';
+export type AudioLanguage = '' | 'ja' | 'zh' | 'en' | 'ko';
+export type SubtitleLanguage = '' | 'off' | 'zh-Hans' | 'zh-Hant' | 'zh' | 'en' | 'ja';
+export type SubtitleColor = 'white' | 'yellow' | 'gray';
+export type SubtitleBackground = 'outline' | 'box' | 'none';
 
 export interface ManualServer {
   url: string;
@@ -30,6 +34,18 @@ export interface Settings {
   autoplayNext: boolean;
   /** Keep the network panel (download speed, buffer) on screen during playback. */
   networkMonitor: boolean;
+  /** Preferred audio language when Plex has not marked a track selected; '' follows the server. */
+  audioLanguage: AudioLanguage;
+  /** Preferred subtitle language when Plex has not marked a track selected; '' follows the server, 'off' leaves subtitles off. */
+  subtitleLanguage: SubtitleLanguage;
+  /** Default subtitle size percentage (50–250, default 100). */
+  subtitleScale: number;
+  subtitleColor: SubtitleColor;
+  subtitleBackground: SubtitleBackground;
+  /** Subtitle and OSD diffuse white level in nits during HDR playback (default 203). */
+  hdrSubtitleBrightness: number;
+  /** UI scale percentage (90–150, default 100). */
+  uiScale: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -42,6 +58,13 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSkipMarkers: false,
   autoplayNext: true,
   networkMonitor: false,
+  audioLanguage: '',
+  subtitleLanguage: '',
+  subtitleScale: 100,
+  subtitleColor: 'white',
+  subtitleBackground: 'outline',
+  hdrSubtitleBrightness: 203,
+  uiScale: 100,
 };
 
 export interface PlexAccount {
@@ -175,6 +198,10 @@ export interface PlaySession {
 export interface PlayerOptions {
   hardwareDecoding: boolean;
   refreshSwitching: boolean;
+  subtitleScale: number;
+  subtitleColor: SubtitleColor;
+  subtitleBackground: SubtitleBackground;
+  hdrSubtitleBrightness: number;
   /** mpv key bindings, generated from the key mapping. */
   inputConf: string;
 }
@@ -190,6 +217,8 @@ export type PlayerEvent =
   | { type: 'next' }
   /** The viewer turned the network panel on or off in the OSD's playback menu. */
   | { type: 'networkMonitor'; on: boolean }
+  /** The viewer adjusted the subtitle size in the OSD's playback menu (percentage). */
+  | { type: 'subtitleScale'; scale: number }
   /** mpv exited and the UI window is back. */
   | { type: 'ended'; position: number; duration: number; reachedEnd: boolean; error?: string };
 
@@ -211,6 +240,7 @@ export interface PlayDeckBridge {
   writeCredentials(credentials: Credentials): Promise<void>;
   readCache(): Promise<AppCache>;
   writeCache(cache: AppCache): Promise<void>;
+  setUiScale(scale: number): void;
   quit(): void;
   player: PlayerBridge;
 }

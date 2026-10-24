@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AppInfo, Credentials, PlexAccount, PlexServer, PlexUserSession, Settings } from '../../shared/bridge';
 import { resolveLocale, translator } from '../core/i18n';
 import type { PlexContext } from '../core/plex/client';
@@ -115,6 +115,10 @@ export function App() {
     },
     [phase, applyRestored],
   );
+
+  useLayoutEffect(() => {
+    if (settings) bridge.setUiScale(settings.uiScale);
+  }, [settings?.uiScale]);
 
   const services = useMemo<AppServices | null>(() => {
     if (!boot || !plex || !settings) return null;

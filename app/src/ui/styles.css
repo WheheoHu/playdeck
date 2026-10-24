@@ -322,8 +322,8 @@ p {
 
 /* Settings */
 .settings-panel {
-  width: 720px;
-  max-height: 660px;
+  width: min(720px, calc(100vw - 64px));
+  max-height: min(660px, calc(100vh - 88px));
   padding: 36px 40px;
   overflow: hidden;
   border-radius: 16px;
@@ -640,9 +640,9 @@ p {
 /* Home */
 .hero-content {
   position: absolute;
-  top: 96px;
+  top: min(96px, max(68px, calc(100vh - 570px)));
   left: 48px;
-  width: 600px;
+  width: min(600px, calc(100vw - 96px));
 }
 
 .hero-summary {
@@ -671,7 +671,7 @@ p {
 }
 
 .home .rows-viewport {
-  top: calc(330px - 12px);
+  top: min(calc(330px - 12px), max(210px, calc(100vh - 336px)));
 }
 
 .rows,
@@ -898,8 +898,8 @@ p {
   gap: 14px;
   align-content: start;
   justify-items: start;
-  width: 856px;
-  min-height: 610px;
+  width: min(856px, 100vw);
+  min-height: min(610px, calc(100vh - 88px));
   padding: 72px 48px 0;
   box-sizing: border-box;
 }
@@ -951,7 +951,7 @@ p {
   display: grid;
   gap: 12px;
   justify-items: start;
-  width: 760px;
+  width: min(760px, calc(100vw - 96px));
 }
 
 /* A fixed box re-laid out alone when focus moves to another episode. */
@@ -959,7 +959,7 @@ p {
   display: grid;
   gap: 6px;
   align-content: start;
-  width: 760px;
+  width: min(760px, calc(100vw - 96px));
   height: 118px;
   contain: strict;
 }
@@ -1089,11 +1089,12 @@ p {
 .menu-panel {
   display: grid;
   gap: 12px;
-  width: 520px;
+  width: min(520px, calc(100vw - 64px));
   padding: 32px 36px;
   border-radius: 16px;
   background: var(--surface);
   box-shadow: 0 24px 64px rgb(0 0 0 / 60%);
+  box-sizing: border-box;
 }
 
 .menu-panel h2 {

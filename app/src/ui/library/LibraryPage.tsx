@@ -11,12 +11,12 @@ import { FocusButton, FocusScope, useFocusManager, useRegion } from '../focus/re
 import type { Action } from '../input';
 import {
   GRID_COLS,
-  GRID_PAD_X,
   GRID_POSTER_H,
   GRID_POSTER_W,
   GRID_ROW_H,
   GRID_STRIDE_X,
   focusedCardRect,
+  gridMetrics,
   imageScale,
 } from '../layout';
 import { isWatched, useNav } from '../nav';
@@ -25,10 +25,8 @@ import { useServers } from '../servers';
 const SORTS: LibrarySort[] = ['title', 'added', 'released', 'rating', 'watched'];
 const PAGE_ROWS = 8;
 const PAGE_SIZE = PAGE_ROWS * GRID_COLS;
-const VISIBLE_ROWS = 2;
 /** Rows kept mounted above and below the visible ones. */
 const OVERSCAN = 2;
-const MOUNTED_ROWS = VISIBLE_ROWS + 2 * OVERSCAN;
 /** Mirrors .grid-viewport padding: room for a focused card's scale-up. */
 const BLEED = 12;
 const PAGE_HINTS = { y: 'hint.sort' };
@@ -40,9 +38,9 @@ interface Cell {
 }
 
 const GridRow = memo(
-  function GridRow({ row, cells }: { row: number; cells: Cell[] }) {
+  function GridRow({ row, padX, cells }: { row: number; padX: number; cells: Cell[] }) {
     return (
-      <div className="grid-row" style={{ transform: `translate3d(0, ${BLEED + row * GRID_ROW_H}px, 0)` }}>
+      <div className="grid-row" style={{ transform: `translate3d(0, ${BLEED + row * GRID_ROW_H}px, 0)`, paddingLeft: padX }}>
         {cells.map(({ index, item, src }) => (
           <div className="grid-cell" key={index}>
             <Poster
@@ -64,6 +62,7 @@ const GridRow = memo(
   // Cells are rebuilt on every render; a row only changes when what it shows changes.
   (before, after) =>
     before.row === after.row &&
+    before.padX === after.padX &&
     before.cells.length === after.cells.length &&
     before.cells.every((cell, i) => cell.item === after.cells[i].item && cell.src === after.cells[i].src),
 );
@@ -84,6 +83,7 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
   const server = byId(section.serverId);
   const [total, setTotal] = useState<number | null>(null);
   const [windowStart, setWindowStart] = useState(0);
+  const [metrics, setMetrics] = useState(() => gridMetrics());
   const [, pageLoaded] = useReducer((n: number) => n + 1, 0);
   const pages = useRef(new Map<number, MediaItem[]>());
   const loading = useRef(new Set<number>());
@@ -91,8 +91,16 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
   const content = useRef<HTMLDivElement>(null);
   const focus = useRef(0);
 
-  const totalRows = Math.ceil((total ?? 0) / GRID_COLS);
+  const { cols, padX, visibleRows } = metrics;
+  const mountedRows = visibleRows + 2 * OVERSCAN;
+  const totalRows = Math.ceil((total ?? 0) / cols);
   const itemAt = (index: number) => pages.current.get(Math.floor(index / PAGE_SIZE))?.[index % PAGE_SIZE];
+
+  useEffect(() => {
+    const onResize = () => setMetrics(gridMetrics());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   function ensurePage(page: number) {
     if (!server || pages.current.has(page) || loading.current.has(page)) return;
@@ -110,8 +118,8 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
   }
 
   useEffect(() => {
-    const first = Math.floor((windowStart * GRID_COLS) / PAGE_SIZE);
-    const last = Math.floor(((windowStart + MOUNTED_ROWS) * GRID_COLS) / PAGE_SIZE);
+    const first = Math.floor((windowStart * cols) / PAGE_SIZE);
+    const last = Math.floor(((windowStart + mountedRows) * cols) / PAGE_SIZE);
     for (let page = first; page <= last + 1; page++) ensurePage(page);
   });
 
@@ -120,9 +128,9 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
     if (!total || !viewport.current) return null;
     const index = Math.min(focus.current, total - 1);
     focus.current = index;
-    const row = Math.floor(index / GRID_COLS);
-    const col = index % GRID_COLS;
-    const scrollRow = Math.max(0, Math.min(row - 1, totalRows - VISIBLE_ROWS));
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    const scrollRow = Math.max(0, Math.min(row - Math.max(0, visibleRows - 1), totalRows - visibleRows));
     content.current!.style.transform = `translate3d(0, ${-scrollRow * GRID_ROW_H}px, 0)`;
     const start = Math.max(0, scrollRow - OVERSCAN);
     if (start !== windowStart) {
@@ -135,7 +143,7 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
     return {
       element,
       rect: focusedCardRect(
-        box.left + GRID_PAD_X + col * GRID_STRIDE_X,
+        box.left + padX + col * GRID_STRIDE_X,
         box.top + BLEED + (row - scrollRow) * GRID_ROW_H,
         GRID_POSTER_W,
         GRID_POSTER_H,
@@ -147,12 +155,12 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
     enter: () => settle(),
     move: (_focused, direction) => {
       const index = focus.current;
-      const col = index % GRID_COLS;
+      const col = index % cols;
       let next = index;
       if (direction === 'left' && col > 0) next -= 1;
-      if (direction === 'right' && col < GRID_COLS - 1 && index + 1 < (total ?? 0)) next += 1;
-      if (direction === 'up') next -= GRID_COLS;
-      if (direction === 'down' && index + GRID_COLS < (total ?? 0)) next += GRID_COLS;
+      if (direction === 'right' && col < cols - 1 && index + 1 < (total ?? 0)) next += 1;
+      if (direction === 'up') next -= cols;
+      if (direction === 'down' && index + cols < (total ?? 0)) next += cols;
       if (next < 0) return null;
       if (next === index) return direction === 'down' ? settle() : null;
       focus.current = next;
@@ -160,7 +168,7 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
     },
     action: (_focused, action) => {
       if (action === 'page-up' || action === 'page-down') {
-        const delta = VISIBLE_ROWS * GRID_COLS * (action === 'page-up' ? -1 : 1);
+        const delta = visibleRows * cols * (action === 'page-up' ? -1 : 1);
         focus.current = Math.max(0, Math.min((total ?? 1) - 1, focus.current + delta));
         manager.focus(settle());
         return true;
@@ -193,10 +201,10 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
   }, [total]);
 
   const rows = [];
-  for (let row = windowStart; row < Math.min(totalRows, windowStart + MOUNTED_ROWS); row++) {
+  for (let row = windowStart; row < Math.min(totalRows, windowStart + mountedRows); row++) {
     const cells: Cell[] = [];
-    for (let col = 0; col < GRID_COLS; col++) {
-      const index = row * GRID_COLS + col;
+    for (let col = 0; col < cols; col++) {
+      const index = row * cols + col;
       if (index >= (total ?? 0)) break;
       const item = itemAt(index);
       const path = item ? posterOf(item) : undefined;
@@ -206,7 +214,7 @@ function LibraryGrid({ section, sort, onTotal, refocus }: GridProps) {
         src: server && path ? imageUrl(server, path, GRID_POSTER_W, GRID_POSTER_H, imageScale()) : undefined,
       });
     }
-    rows.push(<GridRow key={row} row={row} cells={cells} />);
+    rows.push(<GridRow key={row} row={row} padX={padX} cells={cells} />);
   }
 
   return (

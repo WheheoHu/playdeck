@@ -19,6 +19,32 @@ const OUTPUT_TAIL = 2000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const SUB_COLORS: Record<PlayerOptions['subtitleColor'], string> = {
+  white: '#FFFFFFFF',
+  yellow: '#FFF5D547',
+  gray: '#FFD8D8DC',
+};
+
+function subtitleStyleArgs(options: PlayerOptions): string[] {
+  const scale = Math.max(0.5, Math.min(2.5, (options.subtitleScale || 100) / 100));
+  const color = SUB_COLORS[options.subtitleColor] ?? SUB_COLORS.white;
+  const hdrPeak = Math.max(50, Math.min(1000, Math.round(options.hdrSubtitleBrightness || 203)));
+  const bg = options.subtitleBackground;
+  const borderArgs =
+    bg === 'box'
+      ? ['--sub-border-style=background-box', '--sub-border-size=4', '--sub-shadow-offset=0', '--sub-back-color=#B0000000']
+      : bg === 'none'
+        ? ['--sub-border-style=outline-and-shadow', '--sub-border-size=0', '--sub-shadow-offset=0']
+        : ['--sub-border-style=outline-and-shadow', '--sub-border-size=2.5', '--sub-shadow-offset=1', '--sub-back-color=#B0000000'];
+  return [
+    `--sub-scale=${scale}`,
+    `--sub-color=${color}`,
+    ...borderArgs,
+    `--sub-hdr-peak=${hdrPeak}`,
+    `--image-subs-hdr-peak=${hdrPeak}`,
+  ];
+}
+
 export interface PlayerPaths {
   /** The PlayDeck OSD script. */
   script: string;
@@ -113,6 +139,7 @@ export class Player {
       '--title=PlayDeck',
       '--osd-font=Noto Sans CJK SC',
       '--sub-font=Noto Sans CJK SC',
+      ...subtitleStyleArgs(options),
       `--input-ipc-server=${socket}`,
       `--script=${this.paths.script}`,
       `--script-opts=playdeck-session=${sessionFile}`,
@@ -240,11 +267,19 @@ export class Player {
       case 'client-message': {
         const [name, payload] = message.args ?? [];
         if (name !== 'playdeck-event' || !payload) return;
-        const event = JSON.parse(payload) as { type: string; audio?: unknown; subtitle?: unknown; on?: unknown };
+        const event = JSON.parse(payload) as {
+          type: string;
+          audio?: unknown;
+          subtitle?: unknown;
+          on?: unknown;
+          scale?: unknown;
+        };
         const id = (value: unknown) => (typeof value === 'number' ? value : undefined);
         if (event.type === 'tracks') this.emit({ type: 'tracks', audio: id(event.audio), subtitle: id(event.subtitle) });
         else if (event.type === 'next') this.emit({ type: 'next' });
         else if (event.type === 'networkMonitor') this.emit({ type: 'networkMonitor', on: event.on === true });
+        else if (event.type === 'subtitleScale' && typeof event.scale === 'number')
+          this.emit({ type: 'subtitleScale', scale: event.scale });
         return;
       }
     }

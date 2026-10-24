@@ -467,6 +467,10 @@ local function ms(seconds)
   return (value > 0 and '+' or '') .. value .. ' ms'
 end
 
+local function emit_sub_scale()
+  emit({ type = 'subtitleScale', scale = math.floor((mp.get_property_number('sub-scale') or 1) * 100 + 0.5) })
+end
+
 local PLAYBACK_ROWS = {
   { label = 'osd.speed', step = step_speed, reset = function() mp.set_property_number('speed', 1) end,
     value = function() return string.format('%g×', mp.get_property_number('speed') or 1) end },
@@ -476,8 +480,8 @@ local PLAYBACK_ROWS = {
   { label = 'osd.subtitleDelay', step = function(d) adjust('sub-delay', d * 0.1, -30, 30) end,
     reset = function() mp.set_property_number('sub-delay', 0) end,
     value = function() return ms(mp.get_property_number('sub-delay') or 0) end },
-  { label = 'osd.subtitleSize', step = function(d) adjust('sub-scale', d * 0.1, 0.5, 2.5) end,
-    reset = function() mp.set_property_number('sub-scale', 1) end,
+  { label = 'osd.subtitleSize', step = function(d) adjust('sub-scale', d * 0.1, 0.5, 2.5); emit_sub_scale() end,
+    reset = function() mp.set_property_number('sub-scale', 1); emit_sub_scale() end,
     value = function() return string.format('%d%%', math.floor((mp.get_property_number('sub-scale') or 1) * 100 + 0.5)) end },
   { label = 'osd.networkMonitor', toggle = true, step = function() set_network(not net.on) end,
     reset = function() set_network(not net.on) end,

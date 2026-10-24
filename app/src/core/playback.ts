@@ -1,4 +1,4 @@
-import type { PlaySession, SessionTrack, Settings } from '../../shared/bridge';
+import type { AudioLanguage, PlaySession, SessionTrack, Settings, SubtitleLanguage } from '../../shared/bridge';
 import { episodeLabel } from './format';
 import { type PlexContext, plexHeaders } from './plex/client';
 import type { LibraryServer, MediaItem, MediaPart, MediaStream, MediaVersion } from './plex/library';
@@ -71,13 +71,88 @@ function sessionTrack(stream: MediaStream, server: LibraryServer): SessionTrack 
   return { id: stream.id, kind: stream.kind, title: stream.title, language: stream.language, ffIndex: stream.index, selected: stream.selected };
 }
 
-/** The server marks the user's tracks as selected; when it marks no audio, the default or first plays. */
-export function sessionTracks(part: MediaPart, server: LibraryServer): SessionTrack[] {
+export interface TrackPreferences {
+  audioLanguage?: AudioLanguage;
+  subtitleLanguage?: SubtitleLanguage;
+}
+
+/** Scores how well a stream matches a preferred language (0 = no match, higher = better). */
+export function languageScore(stream: MediaStream, pref: string): number {
+  if (!pref || pref === 'off') return 0;
+  const tag = (stream.language ?? '').toLowerCase();
+  const text = `${stream.languageName ?? ''} ${stream.title} ${stream.name ?? ''}`.toLowerCase();
+  const isZh =
+    tag === 'zh' ||
+    tag === 'zho' ||
+    tag === 'chi' ||
+    tag.startsWith('zh-') ||
+    /\b(chinese|cmn|yue)\b|中文|国语|粤语|普通话|简体|繁体|繁體/.test(text);
+  const isHans =
+    tag === 'zh-hans' ||
+    tag === 'zh-cn' ||
+    tag === 'zh-sg' ||
+    /\b(simplified|hans|chs|sc|zh-cn)\b|简体|简中|简日|中简/.test(text);
+  const isHant =
+    tag === 'zh-hant' ||
+    tag === 'zh-tw' ||
+    tag === 'zh-hk' ||
+    tag === 'zh-mo' ||
+    /\b(traditional|hant|cht|tc|zh-tw|zh-hk|taiwan|hong kong)\b|繁体|繁體|繁中|繁日|中繁/.test(text);
+
+  let base = 0;
+  if (pref === 'ja') {
+    if (tag === 'ja' || tag === 'jpn' || tag.startsWith('ja-') || /\bjapanese\b|日本語|日语/.test(text)) base = 20;
+  } else if (pref === 'en') {
+    if (tag === 'en' || tag === 'eng' || tag.startsWith('en-') || /\benglish\b/.test(text)) base = 20;
+  } else if (pref === 'ko') {
+    if (tag === 'ko' || tag === 'kor' || tag.startsWith('ko-') || /\bkorean\b|한국어|韩语/.test(text)) base = 20;
+  } else if (pref === 'zh') {
+    if (isZh) base = 20;
+  } else if (pref === 'zh-Hans') {
+    if (isHans) base = 20;
+    else if (isZh && !isHant) base = 10;
+  } else if (pref === 'zh-Hant') {
+    if (isHant) base = 20;
+    else if (isZh && !isHans) base = 10;
+  }
+  if (base === 0) return 0;
+  return base + (stream.default ? 1 : 0) - (stream.hearingImpaired ? 2 : 0) - (stream.forced ? 5 : 0);
+}
+
+function bestByLanguage(tracks: SessionTrack[], streams: Map<number, MediaStream>, pref: string | undefined): SessionTrack | undefined {
+  if (!pref || pref === 'off') return undefined;
+  let best: SessionTrack | undefined;
+  let bestScore = 0;
+  for (const track of tracks) {
+    const stream = streams.get(track.id);
+    const score = stream ? languageScore(stream, pref) : 0;
+    if (score > bestScore) {
+      bestScore = score;
+      best = track;
+    }
+  }
+  return best;
+}
+
+/**
+ * The server marks the user's tracks as selected; when it marks none of a kind, the user's default
+ * language preference is tried before falling back to the container default or first audio track.
+ */
+export function sessionTracks(part: MediaPart, server: LibraryServer, prefs?: TrackPreferences): SessionTrack[] {
+  const byId = new Map(part.streams.map((stream) => [stream.id, stream]));
   const tracks = part.streams.flatMap((stream) => sessionTrack(stream, server) ?? []);
   const audio = tracks.filter((track) => track.kind === 'audio');
   if (audio.length > 0 && !audio.some((track) => track.selected)) {
-    const fallback = audio.find((track) => part.streams.find((stream) => stream.id === track.id)?.default) ?? audio[0];
+    const fallback =
+      bestByLanguage(audio, byId, prefs?.audioLanguage) ??
+      audio.find((track) => byId.get(track.id)?.default) ??
+      audio[0];
     fallback.selected = true;
+  }
+  const subtitles = tracks.filter((track) => track.kind === 'subtitle');
+  if (subtitles.length > 0 && !subtitles.some((track) => track.selected)) {
+    const preferred = bestByLanguage(subtitles, byId, prefs?.subtitleLanguage);
+    if (preferred) preferred.selected = true;
   }
   return tracks;
 }
@@ -86,7 +161,7 @@ export interface SessionOptions {
   /** Ignore the resume offset. */
   fromStart?: boolean;
   next?: MediaItem | null;
-  settings: Pick<Settings, 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor'>;
+  settings: Pick<Settings, 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor' | 'audioLanguage' | 'subtitleLanguage'>;
   strings: Record<string, string>;
 }
 
@@ -109,7 +184,7 @@ export function buildSession(context: PlexContext, server: LibraryServer, playab
     ...playTitles(item),
     frameRate: video?.frameRate,
     bitrate: version.bitrate,
-    tracks: sessionTracks(part, server),
+    tracks: sessionTracks(part, server, options.settings),
     markers: item.markers.map((marker) => ({ kind: marker.kind, start: marker.start / 1000, end: marker.end / 1000 })),
     next: options.next ? playTitles(options.next) : undefined,
     autoSkipMarkers: options.settings.autoSkipMarkers,

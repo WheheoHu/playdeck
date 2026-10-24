@@ -28,8 +28,8 @@ PAGE_ANIMATION_MS = 200
 SAME_PRESENT_NS = 2_000_000
 
 # (phase, keys, interval ms). 90 ms is the gamepad's key repeat (src/ui/input.ts), so held D-pad
-# scrolling overlaps animations the way a user's does. Expects the Libraries tab to list Anime Movies,
-# Movies, Anime, TV Shows first, and TV Shows to open on a show with several seasons.
+# scrolling overlaps animations the way a user's does. Expects the Libraries tab to list movie and TV
+# sections, and the show section to open on a show with several seasons.
 SCRIPT = [
     ("home-rows", ["Right"] * 12, 90),
     ("home-rows", ["Down"], 400),

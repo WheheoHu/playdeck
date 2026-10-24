@@ -162,6 +162,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           case 'networkMonitor':
             void latest.current.updateSettings({ networkMonitor: event.on });
             return;
+          case 'subtitleScale':
+            void latest.current.updateSettings({ subtitleScale: event.scale });
+            return;
           case 'ended': {
             const wasActive = active.current;
             finish(current.current, event.position, event.duration, event.reachedEnd);
@@ -196,6 +199,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         await bridge.player.start(sessionFor(entry, options), {
           hardwareDecoding: settings.hardwareDecoding,
           refreshSwitching: settings.refreshSwitching,
+          subtitleScale: settings.subtitleScale,
+          subtitleColor: settings.subtitleColor,
+          subtitleBackground: settings.subtitleBackground,
+          hdrSubtitleBrightness: settings.hdrSubtitleBrightness,
           inputConf: inputConf(),
         });
         // A cancel that reached the host before mpv existed did nothing there.

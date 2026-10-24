@@ -17,6 +17,10 @@ repo/
 .env.*
 !.env.example
 
-# Logs and OS files
+# Logs, debug artifacts and OS files
 *.log
+*.sock
+session-*.json
+trace*.json
+run/
 .DS_Store

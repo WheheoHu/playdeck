@@ -29,6 +29,14 @@ export const GRID_ROW_H = GRID_POSTER_H + GRID_CAPTION_H + 12;
 /** Logical pixels to device pixels, for requesting images at native resolution. */
 export const imageScale = () => window.devicePixelRatio || 1;
 
+/** Columns, horizontal centering and visible rows for the current logical viewport size. */
+export function gridMetrics(width = window.innerWidth, height = window.innerHeight) {
+  const cols = Math.max(1, Math.floor((width - 2 * PAD_X + GRID_GAP) / GRID_STRIDE_X));
+  const padX = Math.max(24, Math.floor((width - (cols * GRID_POSTER_W + (cols - 1) * GRID_GAP)) / 2));
+  const visibleRows = Math.max(1, Math.floor((height - 84 - 44) / GRID_ROW_H));
+  return { cols, padX, visibleRows };
+}
+
 /** The rect of a card at (x, y) once its focus scale-up has finished. */
 export function focusedCardRect(x: number, y: number, width = POSTER_W, height = POSTER_H) {
   const dx = (width * (FOCUS_SCALE - 1)) / 2;

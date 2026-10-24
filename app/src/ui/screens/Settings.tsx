@@ -1,4 +1,10 @@
-import type { LanguageSetting } from '../../../shared/bridge';
+import type {
+  AudioLanguage,
+  LanguageSetting,
+  SubtitleBackground,
+  SubtitleColor,
+  SubtitleLanguage,
+} from '../../../shared/bridge';
 import { LOCALES, type MessageKey } from '../../core/i18n';
 import { libraryId } from '../../core/plex/library';
 import type { Session } from '../../core/session';
@@ -47,6 +53,40 @@ function HomeLibraries() {
   );
 }
 
+const UI_SCALES = [90, 100, 110, 125, 150] as const;
+const SUBTITLE_SCALES = [75, 100, 125, 150] as const;
+const HDR_BRIGHTNESS = [100, 150, 203, 300, 400] as const;
+
+const AUDIO_LANGUAGES: [AudioLanguage, MessageKey][] = [
+  ['', 'settings.lang.server'],
+  ['ja', 'settings.lang.ja'],
+  ['zh', 'settings.lang.zh'],
+  ['en', 'settings.lang.en'],
+  ['ko', 'settings.lang.ko'],
+];
+
+const SUBTITLE_LANGUAGES: [SubtitleLanguage, MessageKey][] = [
+  ['', 'settings.lang.server'],
+  ['off', 'settings.lang.off'],
+  ['zh-Hans', 'settings.lang.zhHans'],
+  ['zh-Hant', 'settings.lang.zhHant'],
+  ['zh', 'settings.lang.zh'],
+  ['en', 'settings.lang.en'],
+  ['ja', 'settings.lang.ja'],
+];
+
+const SUBTITLE_COLORS: [SubtitleColor, MessageKey][] = [
+  ['white', 'settings.subtitleColor.white'],
+  ['yellow', 'settings.subtitleColor.yellow'],
+  ['gray', 'settings.subtitleColor.gray'],
+];
+
+const SUBTITLE_BACKGROUNDS: [SubtitleBackground, MessageKey][] = [
+  ['outline', 'settings.subtitleBackground.outline'],
+  ['box', 'settings.subtitleBackground.box'],
+  ['none', 'settings.subtitleBackground.none'],
+];
+
 type PlaybackSetting = 'refreshSwitching' | 'hardwareDecoding' | 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor';
 
 const PLAYBACK_SETTINGS: [PlaybackSetting, MessageKey][] = [
@@ -57,10 +97,89 @@ const PLAYBACK_SETTINGS: [PlaybackSetting, MessageKey][] = [
   ['networkMonitor', 'settings.networkMonitor'],
 ];
 
-function PlaybackSettings() {
-  const { settings, updateSettings, t } = useApp();
+function OptionGroup<T extends string | number>({
+  title,
+  note,
+  value,
+  options,
+  onSelect,
+}: {
+  title: string;
+  note?: string;
+  value: T;
+  options: [T, string][];
+  onSelect: (next: T) => void;
+}) {
   return (
     <>
+      <h3>{title}</h3>
+      {note && <p className="muted settings-note">{note}</p>}
+      <div className="option-row">
+        {options.map(([option, label]) => (
+          <FocusButton
+            key={String(option)}
+            className={value === option ? 'option selected' : 'option'}
+            onSelect={() => onSelect(option)}
+          >
+            {label}
+          </FocusButton>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function PlaybackSettings() {
+  const { settings, updateSettings, t } = useApp();
+  const subScales = SUBTITLE_SCALES.includes(settings.subtitleScale as (typeof SUBTITLE_SCALES)[number])
+    ? [...SUBTITLE_SCALES]
+    : [...SUBTITLE_SCALES, settings.subtitleScale].sort((a, b) => a - b);
+
+  return (
+    <>
+      <OptionGroup
+        title={t('settings.audioLanguage')}
+        note={t('settings.tracksNote')}
+        value={settings.audioLanguage}
+        options={AUDIO_LANGUAGES.map(([code, key]) => [code, t(key)])}
+        onSelect={(audioLanguage) => updateSettings({ audioLanguage })}
+      />
+
+      <OptionGroup
+        title={t('settings.subtitleLanguage')}
+        value={settings.subtitleLanguage}
+        options={SUBTITLE_LANGUAGES.map(([code, key]) => [code, t(key)])}
+        onSelect={(subtitleLanguage) => updateSettings({ subtitleLanguage })}
+      />
+
+      <OptionGroup
+        title={t('settings.subtitleSize')}
+        value={settings.subtitleScale}
+        options={subScales.map((scale) => [scale, `${scale}%`])}
+        onSelect={(subtitleScale) => updateSettings({ subtitleScale })}
+      />
+
+      <OptionGroup
+        title={t('settings.subtitleColor')}
+        value={settings.subtitleColor}
+        options={SUBTITLE_COLORS.map(([color, key]) => [color, t(key)])}
+        onSelect={(subtitleColor) => updateSettings({ subtitleColor })}
+      />
+
+      <OptionGroup
+        title={t('settings.subtitleBackground')}
+        value={settings.subtitleBackground}
+        options={SUBTITLE_BACKGROUNDS.map(([bg, key]) => [bg, t(key)])}
+        onSelect={(subtitleBackground) => updateSettings({ subtitleBackground })}
+      />
+
+      <OptionGroup
+        title={t('settings.hdrBrightness')}
+        value={settings.hdrSubtitleBrightness}
+        options={HDR_BRIGHTNESS.map((nits) => [nits, `${nits} nits`])}
+        onSelect={(hdrSubtitleBrightness) => updateSettings({ hdrSubtitleBrightness })}
+      />
+
       <h3>{t('settings.playback')}</h3>
       <div className="option-row">
         {PLAYBACK_SETTINGS.map(([key, label]) => (
@@ -105,6 +224,13 @@ export function SettingsOverlay({ session, onClose, onSwitchUser, onSignOut }: S
               </FocusButton>
             ))}
           </div>
+
+          <OptionGroup
+            title={t('settings.uiScale')}
+            value={settings.uiScale}
+            options={UI_SCALES.map((scale) => [scale, `${scale}%`])}
+            onSelect={(uiScale) => updateSettings({ uiScale })}
+          />
 
           <PlaybackSettings />
 

@@ -6,7 +6,13 @@ import { TimelineReporter } from '../src/core/timeline';
 import { fakeFetch } from './support';
 
 const SERVER = { id: 'srv', name: 'Home', baseUrl: 'https://plex.example:32400', token: 'secret-token' };
-const SETTINGS = { autoSkipMarkers: false, autoplayNext: true, networkMonitor: true };
+const SETTINGS = {
+  autoSkipMarkers: false,
+  autoplayNext: true,
+  networkMonitor: true,
+  audioLanguage: '' as const,
+  subtitleLanguage: '' as const,
+};
 
 const EPISODE: RawMetadata = {
   ratingKey: 501,
@@ -83,6 +89,45 @@ describe('play sessions', () => {
         selected: false,
       },
     ]);
+  });
+
+  it('applies default audio and subtitle language preferences when Plex has not marked a track selected', () => {
+    const item = episode({
+      Media: [
+        {
+          id: 7,
+          Part: [
+            {
+              id: 70,
+              key: '/library/parts/70/1/file.mkv',
+              Stream: [
+                { id: 1, streamType: 1, index: 0, codec: 'hevc' },
+                { id: 2, streamType: 2, index: 1, codec: 'eac3', displayTitle: 'English', languageTag: 'en', default: true },
+                { id: 3, streamType: 2, index: 2, codec: 'aac', displayTitle: '日本語', languageTag: 'ja' },
+                { id: 4, streamType: 3, index: 3, codec: 'srt', displayTitle: 'Chinese (Taiwan) SDH', languageTag: 'zh-TW', hearingImpaired: true },
+                { id: 5, streamType: 3, index: 4, codec: 'srt', displayTitle: '中文 (简体)', languageTag: 'zh-CN' },
+                { id: 6, streamType: 3, index: 5, codec: 'srt', displayTitle: 'English (Forced)', languageTag: 'en', forced: true },
+                { id: 7, streamType: 3, index: 6, codec: 'srt', displayTitle: 'English', languageTag: 'en' },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const { part } = playableOf(item)!;
+    const zhHans = sessionTracks(part, SERVER, { audioLanguage: 'ja', subtitleLanguage: 'zh-Hans' });
+    expect(zhHans.find((t) => t.kind === 'audio' && t.selected)?.id).toBe(3);
+    expect(zhHans.find((t) => t.kind === 'subtitle' && t.selected)?.id).toBe(5);
+
+    const zhHant = sessionTracks(part, SERVER, { audioLanguage: 'en', subtitleLanguage: 'zh-Hant' });
+    expect(zhHant.find((t) => t.kind === 'audio' && t.selected)?.id).toBe(2);
+    expect(zhHant.find((t) => t.kind === 'subtitle' && t.selected)?.id).toBe(4);
+
+    const enFull = sessionTracks(part, SERVER, { subtitleLanguage: 'en' });
+    expect(enFull.find((t) => t.kind === 'subtitle' && t.selected)?.id).toBe(7);
+
+    const subOff = sessionTracks(part, SERVER, { subtitleLanguage: 'off' });
+    expect(subOff.some((t) => t.kind === 'subtitle' && t.selected)).toBe(false);
   });
 
   it('turns intro and credits markers into seconds and names the next episode', () => {

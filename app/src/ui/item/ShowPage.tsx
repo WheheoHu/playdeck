@@ -193,7 +193,8 @@ function EpisodeStrip({ seasonKey, episodes, initial, onFocusEpisode }: StripPro
     if (episodes.length === 0 || !viewport.current) return null;
     const i = Math.min(index.current, episodes.length - 1);
     index.current = i;
-    const scroll = Math.max(0, Math.min(i - STRIP_LEAD, episodes.length - STRIP_VISIBLE));
+    const visible = Math.max(1, Math.floor(((viewport.current.clientWidth || 1280) - PAD_X) / STILL_STRIDE));
+    const scroll = Math.max(0, Math.min(i - STRIP_LEAD, episodes.length - visible));
     track.current!.style.transform = `translate3d(${-scroll * STILL_STRIDE}px, 0, 0)`;
     const start = Math.max(0, scroll - STRIP_OVERSCAN);
     if (start !== windowStart) {

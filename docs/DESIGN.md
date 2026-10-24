@@ -519,7 +519,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - **After exit:** the UI came back at 90 Hz, with its resume label up to date.
 - **Deferred.**
   - The resolution guard and external displays move to M5.
-  - Still to come from section 9: default audio and subtitle languages, subtitle style, HDR subtitle and OSD brightness, and key mapping.
+  - Still to come from section 9: key mapping.
   - In M3, DV P5, HDR10 and HDR10+ were tested only through spike S2 (section 14.1). The DV P8.1 file above is the only HDR file tested in M3.
 
 ### 13.5 After M3
@@ -527,6 +527,11 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
 - **Quitting and Back.** On Libraries or Search, B returns to Home. On Home, a single B opens "Quit PlayDeck?" (A quits, B cancels).
 - **Stopping.** The "Stop playback?" dialog is gone. B shows "Press again to stop" near the top for 2 s, and a second B stops. Opening a menu cancels it.
 - **OSD.** While paused, a `| |` pause icon sits above the title, left-aligned. The live read rate (`cache-speed`) is always shown to the left of the top-right clock (`12.5 Mbps · 19:12`).
+- **Settings (section 9).**
+  - **Default audio and subtitle languages:** used when Plex has not marked a stream of that kind as `selected`. Matches ISO/BCP-47 tags and titles (`zh-Hans` vs `zh-Hant`, `zh`, `ja`, `en`, `ko`), preferring normal dialogue tracks over SDH and forced tracks.
+  - **Subtitle style and size:** default scale (`75%–150%`, synced with the OSD playback menu's `--sub-scale`), text color (white, yellow, light gray) and background/border (`outline-and-shadow`, `background-box` or none).
+  - **HDR subtitle & OSD brightness:** `100–400 nits` (default `203 nits`), passed to mpv as `--sub-hdr-peak` and `--image-subs-hdr-peak`.
+  - **UI scale (`90%–150%`):** applied natively through Chromium's `webFrame.setZoomFactor`, with responsive grid columns and viewport sizing.
 - **Network monitor** (section 7.3).
   - The OSD script samples `demuxer-cache-state` and `cache-speed` once a second, whether or not the panel shows, so turning it on shows the last minute at once.
   - The session carries the version's bit rate and the setting. The OSD's switch sends `networkMonitor` to the host, and the UI saves it as `networkMonitor` in `settings.json`. The bridge stays at version 2, since no host has shipped.

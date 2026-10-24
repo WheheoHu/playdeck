@@ -208,6 +208,7 @@ interface RawStream {
   selected?: boolean;
   codec?: string;
   languageTag?: string;
+  languageCode?: string;
   language?: string;
   title?: string;
   displayTitle?: string;
@@ -267,7 +268,7 @@ function parseStream(raw: RawStream): MediaStream | null {
     id: raw.id,
     kind,
     codec: raw.codec,
-    language: raw.languageTag ?? raw.language,
+    language: raw.languageTag ?? raw.languageCode ?? raw.language,
     languageName: raw.language,
     title: raw.extendedDisplayTitle ?? raw.displayTitle ?? raw.codec ?? '',
     name: raw.title,
