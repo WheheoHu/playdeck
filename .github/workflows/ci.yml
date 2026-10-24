@@ -108,7 +108,9 @@ jobs:
             flatpak-builder \
             ostree \
             elfutils \
-            ccache
+            ccache \
+            librsvg2-common \
+            libgdk-pixbuf2.0-bin
 
       - name: Cache Flatpak downloads and ccache
         uses: actions/cache@v4
