@@ -38,7 +38,7 @@ export function FocusProvider({ children, onUnhandled }: { children: ReactNode; 
 }
 
 interface FocusScopeProps {
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   /** B / Escape. */
   onBack?: () => void;
