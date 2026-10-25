@@ -19,7 +19,7 @@ import {
 } from '../shared/bridge';
 import { startDevControl } from './devControl';
 import { Player } from './player';
-import { JsonFile, loadClientIdentifier } from './storage';
+import { JsonFile, loadClientIdentifier, sanitizeSettings } from './storage';
 
 const RENDERER_DIR = path.join(__dirname, '..', 'dist');
 const MPV_SCRIPT = path.join(__dirname, '..', 'mpv', 'playdeck.lua');
@@ -92,8 +92,8 @@ async function registerBridge(): Promise<void> {
   };
 
   ipcMain.handle(CHANNELS.appInfo, () => appInfo);
-  ipcMain.handle(CHANNELS.readSettings, () => settings.read());
-  ipcMain.handle(CHANNELS.writeSettings, (_event, value: Settings) => settings.write(value));
+  ipcMain.handle(CHANNELS.readSettings, async () => sanitizeSettings(await settings.read()));
+  ipcMain.handle(CHANNELS.writeSettings, (_event, value: Settings) => settings.write(sanitizeSettings(value)));
   ipcMain.handle(CHANNELS.readCredentials, async () => {
     const loaded = await credentials.read();
     webdavLibraries = loaded.webdavLibraries ?? [];

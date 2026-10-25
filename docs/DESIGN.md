@@ -318,6 +318,10 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - The Deck runs `sshd`, with a `steamdeck` host entry and key-based login.
   - Builds are deployed with `rsync` to a fixed directory.
   - A fixed non-Steam shortcut, "PlayDeck (dev)", runs that directory's launcher script. It is started remotely with `steam steam://rungameid/<id>` so that it runs inside Gaming Mode.
+- **On-device testing.** A session that changes code or adds a feature asks for a Deck SSH target (`user@host`, or an SSH config `Host` name) so the dev build can be updated for testing.
+  - A target already given in that conversation is enough: deploy with `app/scripts/deploy-deck.sh` when the change is ready to try. Set `PLAYDECK_DECK_HOST` for that command when the target is not the default `steamdeck` host. `--launch` starts Gaming Mode only when asked.
+  - The address stays out of the repository. It is not committed, not written into tracked files, and not made the script's default. A lasting entry belongs in the operator's `~/.ssh/config`.
+  - The deploy updates `~/playdeck-dev` and the `current` link. Restart **PlayDeck (dev)** to load it. The library item **PlayDeck** is the installed Flatpak and does not change.
 - **Diagnostics:** logs from mpv, the WSI layer and the application are collected over SSH. Visual HDR quality is verified by eye on the device and the display.
 - **Builds:** local builds use an x86_64 Linux environment. Release Flatpaks are built by GitHub Actions.
 - **Git branches and commits:**
@@ -370,7 +374,7 @@ Plezy (GPL-3.0) may be used as a reference for Plex API behavior, such as connec
   - Live result against the maintainer's server from outside its LAN: a remote HTTPS connection at about 100 ms, settled in 2.4 s. The manual address settles in 0.4 s.
 - **Focus engine.** Small screens use spatial navigation over `[data-focusable]` elements. Large collections register a region that handles its own movement (the S5 approach). There is a single focus ring moved by `transform`, and a scope stack in which the top overlay owns input and B/Escape.
 - **Development tools.**
-  - `app/scripts/deploy-deck.sh [--launch]` builds, syncs and starts the app through the dev shortcut.
+  - `app/scripts/deploy-deck.sh [--launch]` builds, syncs and starts the app through the dev shortcut. Section 12 says when a session runs it, and that the SSH target stays out of the repo.
   - `app/deck/devctl.py` sends keys, captures the window and evaluates JavaScript over `PLAYDECK_DEV_CONTROL`.
   - `app/deck/stop.sh` stops dev builds by executable path, since Chromium rewrites its command line.
 - **Deferred within M1.**

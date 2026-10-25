@@ -62,7 +62,15 @@ describe('play sessions', () => {
     expect(session.httpHeaders).toContain('X-Plex-Token: secret-token');
     expect(session.httpHeaders.some((header) => header.startsWith('Accept:'))).toBe(false);
     expect(session.frameRate).toBe(23.976);
-    expect(session).toMatchObject({ title: 'Severance', subtitle: 'S1 · E1 · Pilot', autoplayNext: true, networkMonitor: true });
+    expect(session).toMatchObject({
+      title: 'Severance',
+      subtitle: 'S1 · E1 · Pilot',
+      autoplayNext: true,
+      networkMonitor: true,
+      statsSections: ['video', 'timing', 'audio', 'network', 'scope'],
+      statsWaveform: 'rgb',
+      hdrSubtitleBrightness: 203,
+    });
     expect(session.bitrate).toBe(24_500);
   });
 
@@ -151,6 +159,19 @@ describe('play sessions', () => {
     expect(conf).toContain('GAMEPAD_ACTION_RIGHT script-binding playdeck/back\n');
     expect(conf).toContain('GAMEPAD_LEFT_SHOULDER script-binding playdeck/prev-chapter\n');
     expect(conf).toContain('ESC script-binding playdeck/back\n');
+    expect(conf).toContain('GAMEPAD_DPAD_DOWN script-binding playdeck/down\n');
+    expect(conf).toContain('GAMEPAD_ACTION_LEFT script-binding playdeck/stats\n');
+  });
+
+  it('passes the chosen stats modules and the HDR subtitle peak', () => {
+    const { context } = fakeFetch([]);
+    const session = buildSession(context, SERVER, playableOf(episode())!, {
+      settings: { ...SETTINGS, statsSections: ['scope', 'audio'], hdrSubtitleBrightness: 400, statsWaveform: 'luma' },
+      strings: {},
+    });
+    expect(session.statsSections).toEqual(['scope', 'audio']);
+    expect(session.hdrSubtitleBrightness).toBe(400);
+    expect(session.statsWaveform).toBe('luma');
   });
 });
 

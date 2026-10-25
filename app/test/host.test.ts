@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { parseClientEvent } from '../electron/player';
+import { sanitizeSettings } from '../electron/storage';
 import { PadState, joystickEventDevices, parseEvents } from '../electron/gamepad';
 import { parseDisplayInfo, refreshFor } from '../electron/gamescope';
+import { ALL_STATS_SECTIONS, DEFAULT_SETTINGS, type StatsSection } from '../shared/bridge';
 
 const DECK_OLED_RATES = [45, 47, 48, 49, 50, 51, 53, 55, 56, 59, 60, 62, 64, 65, 66, 68, 72, 73, 76, 77, 78, 80, 81, 82, 84, 85, 86, 87, 88, 90];
 
@@ -83,5 +86,37 @@ describe('evdev gamepad', () => {
       [1, 0x131, 1],
       [3, 0x11, -1],
     ]);
+  });
+});
+
+describe('settings migration', () => {
+  it('fills every stats module when an older settings file has none', () => {
+    const { statsSections, ...legacy } = DEFAULT_SETTINGS;
+    expect(statsSections).toEqual([...ALL_STATS_SECTIONS]);
+    expect(sanitizeSettings(legacy).statsSections).toEqual([...ALL_STATS_SECTIONS]);
+    expect(sanitizeSettings({}).networkMonitor).toBe(false);
+  });
+
+  it('keeps a saved module list and drops unknown ids', () => {
+    const saved = sanitizeSettings({ statsSections: ['scope', 'nope' as StatsSection, 'video'] });
+    expect(saved.statsSections).toEqual(['scope', 'video']);
+    expect(sanitizeSettings({ statsSections: [] }).statsSections).toEqual([]);
+    expect(sanitizeSettings({ statsWaveform: 'luma' }).statsWaveform).toBe('luma');
+    expect(sanitizeSettings({ statsWaveform: 'nope' as 'luma' }).statsWaveform).toBe('rgb');
+  });
+});
+
+describe('playback ipc events', () => {
+  it('accepts a stats module list and ignores unknown ids', () => {
+    expect(parseClientEvent(JSON.stringify({ type: 'statsSections', sections: ['audio', 'bogus', 3, 'scope'] }))).toEqual({
+      type: 'statsSections',
+      sections: ['audio', 'scope'],
+    });
+    expect(parseClientEvent(JSON.stringify({ type: 'stop' }))).toEqual({ type: 'stop' });
+    expect(parseClientEvent(JSON.stringify({ type: 'networkMonitor', on: 1 }))).toEqual({ type: 'networkMonitor', on: false });
+    expect(parseClientEvent(JSON.stringify({ type: 'subtitleScale', scale: 120 }))).toEqual({ type: 'subtitleScale', scale: 120 });
+    expect(parseClientEvent(JSON.stringify({ type: 'statsWaveform', mode: 'luma' }))).toEqual({ type: 'statsWaveform', mode: 'luma' });
+    expect(parseClientEvent(JSON.stringify({ type: 'statsWaveform', mode: 'parade' }))).toBeNull();
+    expect(parseClientEvent(JSON.stringify({ type: 'other' }))).toBeNull();
   });
 });

@@ -367,6 +367,9 @@ describe('Mixed WebDAV library scanning, Home integration, and playback session'
     expect(session.url).toBe('http://192.168.1.50:5244/dav/Media/Oppenheimer%20(2023)/Oppenheimer.2023.2160p.DV.HEVC.mkv');
     expect(session.httpHeaders).toEqual(['Authorization: Basic dXNlcjpwdw==']);
     expect(session.fileSize).toBe(18_000_000_000);
+    expect(session.statsSections).toEqual(['video', 'timing', 'audio', 'network', 'scope']);
+    expect(session.statsWaveform).toBe('rgb');
+    expect(session.hdrSubtitleBrightness).toBe(203);
     expect(session.audioLanguage).toBe('ja');
     expect(session.subtitleLanguage).toBe('zh-Hans');
     expect(session.tracks).toEqual([

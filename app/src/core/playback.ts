@@ -1,4 +1,11 @@
-import type { AudioLanguage, PlaySession, SessionTrack, Settings, SubtitleLanguage } from '../../shared/bridge';
+import {
+  ALL_STATS_SECTIONS,
+  type AudioLanguage,
+  type PlaySession,
+  type SessionTrack,
+  type Settings,
+  type SubtitleLanguage,
+} from '../../shared/bridge';
 import { episodeLabel } from './format';
 import { type PlexContext, plexHeaders } from './plex/client';
 import type { LibraryServer, MediaItem, MediaPart, MediaStream, MediaVersion } from './plex/library';
@@ -163,7 +170,8 @@ export interface SessionOptions {
   /** Ignore the resume offset. */
   fromStart?: boolean;
   next?: MediaItem | null;
-  settings: Pick<Settings, 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor' | 'audioLanguage' | 'subtitleLanguage'>;
+  settings: Pick<Settings, 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor' | 'audioLanguage' | 'subtitleLanguage'> &
+    Partial<Pick<Settings, 'statsSections' | 'hdrSubtitleBrightness' | 'statsWaveform'>>;
   strings: Record<string, string>;
 }
 
@@ -177,6 +185,9 @@ export function buildSession(context: PlexContext, server: LibraryServer, playab
   const duration = version.duration ?? item.duration;
   // Resuming within the last few seconds would only show the credits' end; start over instead.
   const offset = options.fromStart || !item.viewOffset || (duration && item.viewOffset > duration - 10_000) ? 0 : item.viewOffset;
+  const statsSections = options.settings.statsSections ?? [...ALL_STATS_SECTIONS];
+  const hdrSubtitleBrightness = options.settings.hdrSubtitleBrightness ?? 203;
+  const statsWaveform = options.settings.statsWaveform === 'luma' ? 'luma' : 'rgb';
 
   if (server.kind === 'webdav') {
     const auth = basicAuthHeader(server.webdav?.username, server.webdav?.password);
@@ -196,6 +207,9 @@ export function buildSession(context: PlexContext, server: LibraryServer, playab
       autoSkipMarkers: options.settings.autoSkipMarkers,
       autoplayNext: options.settings.autoplayNext,
       networkMonitor: options.settings.networkMonitor,
+      statsSections,
+      statsWaveform,
+      hdrSubtitleBrightness,
       strings: options.strings,
     };
   }
@@ -215,6 +229,9 @@ export function buildSession(context: PlexContext, server: LibraryServer, playab
     autoSkipMarkers: options.settings.autoSkipMarkers,
     autoplayNext: options.settings.autoplayNext,
     networkMonitor: options.settings.networkMonitor,
+    statsSections,
+    statsWaveform,
+    hdrSubtitleBrightness,
     strings: options.strings,
   };
 }

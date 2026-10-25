@@ -1,6 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { ALL_STATS_SECTIONS, DEFAULT_SETTINGS, type Settings, type StatsSection } from '../shared/bridge';
+
+/** Ensures settings read from disk have valid statsSections, falling back to defaults when absent. */
+export function sanitizeSettings(raw: Partial<Settings>): Settings {
+  const merged = { ...structuredClone(DEFAULT_SETTINGS), ...raw };
+  if (Array.isArray(raw.statsSections)) {
+    merged.statsSections = raw.statsSections.filter((s): s is StatsSection =>
+      typeof s === 'string' && (ALL_STATS_SECTIONS as readonly string[]).includes(s),
+    );
+  } else {
+    merged.statsSections = [...ALL_STATS_SECTIONS];
+  }
+  merged.statsWaveform = raw.statsWaveform === 'luma' ? 'luma' : 'rgb';
+  return merged;
+}
 
 /** A JSON document on disk, written atomically and read back merged over defaults. */
 export class JsonFile<T extends object> {

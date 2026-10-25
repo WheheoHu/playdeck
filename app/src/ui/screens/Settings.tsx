@@ -1,11 +1,13 @@
 import { useCallback, useState } from 'react';
-import type {
-  AudioLanguage,
-  LanguageSetting,
-  SubtitleBackground,
-  SubtitleColor,
-  SubtitleLanguage,
-  WebDavLibraryConfig,
+import {
+  ALL_STATS_SECTIONS,
+  type AudioLanguage,
+  type LanguageSetting,
+  type StatsSection,
+  type SubtitleBackground,
+  type SubtitleColor,
+  type SubtitleLanguage,
+  type WebDavLibraryConfig,
 } from '../../../shared/bridge';
 import { LOCALES, type MessageKey } from '../../core/i18n';
 import { libraryId } from '../../core/plex/library';
@@ -177,14 +179,21 @@ const SUBTITLE_BACKGROUNDS: [SubtitleBackground, MessageKey][] = [
   ['none', 'settings.subtitleBackground.none'],
 ];
 
-type PlaybackSetting = 'refreshSwitching' | 'hardwareDecoding' | 'autoSkipMarkers' | 'autoplayNext' | 'networkMonitor';
+type PlaybackSetting = 'refreshSwitching' | 'hardwareDecoding' | 'autoSkipMarkers' | 'autoplayNext';
 
 const PLAYBACK_SETTINGS: [PlaybackSetting, MessageKey][] = [
   ['autoplayNext', 'settings.autoplayNext'],
   ['autoSkipMarkers', 'settings.autoSkipMarkers'],
   ['refreshSwitching', 'settings.refreshSwitching'],
   ['hardwareDecoding', 'settings.hardwareDecoding'],
-  ['networkMonitor', 'settings.networkMonitor'],
+];
+
+const STATS_SECTION_OPTIONS: [StatsSection, MessageKey][] = [
+  ['video', 'settings.stats.video'],
+  ['timing', 'settings.stats.timing'],
+  ['audio', 'settings.stats.audio'],
+  ['network', 'settings.stats.network'],
+  ['scope', 'settings.stats.scope'],
 ];
 
 function OptionGroup<T extends string | number>({
@@ -313,6 +322,37 @@ function PlaybackSettings() {
             {t(label)}
           </FocusButton>
         ))}
+      </div>
+
+      <OptionGroup
+        title={t('settings.statsWaveform')}
+        note={t('settings.statsWaveformNote')}
+        value={settings.statsWaveform}
+        options={[
+          ['rgb', t('settings.statsWaveform.rgb')],
+          ['luma', t('settings.statsWaveform.luma')],
+        ]}
+        onSelect={(statsWaveform) => updateSettings({ statsWaveform })}
+      />
+
+      <h3>{t('settings.statsSections')}</h3>
+      <p className="muted settings-note">{t('settings.statsSectionsNote')}</p>
+      <div className="option-row">
+        {STATS_SECTION_OPTIONS.map(([section, label]) => {
+          const active = settings.statsSections.includes(section);
+          const toggle = () => {
+            const next = active
+              ? settings.statsSections.filter((s) => s !== section)
+              : ALL_STATS_SECTIONS.filter((s) => s === section || settings.statsSections.includes(s));
+            updateSettings({ statsSections: next });
+          };
+          return (
+            <FocusButton key={section} className={active ? 'option toggle on' : 'option toggle'} onSelect={toggle}>
+              <span className="toggle-mark">{active ? '✓' : ''}</span>
+              {t(label)}
+            </FocusButton>
+          );
+        })}
       </div>
 
       <OptionGroup

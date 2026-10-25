@@ -175,6 +175,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           case 'networkMonitor':
             void latest.current.updateSettings({ networkMonitor: event.on });
             return;
+          case 'statsSections':
+            void latest.current.updateSettings({ statsSections: event.sections });
+            return;
+          case 'statsWaveform':
+            void latest.current.updateSettings({ statsWaveform: event.mode });
+            return;
           case 'subtitleScale':
             void latest.current.updateSettings({ subtitleScale: event.scale });
             return;

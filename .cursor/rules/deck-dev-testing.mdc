@@ -1,0 +1,16 @@
+---
+description: After code or feature work, ask for a Deck SSH target and deploy the dev build when one was given
+alwaysApply: true
+---
+
+# Deck dev testing
+
+When this session changes code or adds a feature, ask for a Deck SSH target (`user@host`, or an SSH config Host name) so the dev build can be updated for testing.
+
+When the user has given a target in this conversation, deploy with `app/scripts/deploy-deck.sh` once the change is ready to try. For a target other than the default `steamdeck` host, set `PLAYDECK_DECK_HOST` for that command only.
+
+Keep the address out of the repository. Do not commit it, write it into tracked files, or change the script's default host. A lasting entry belongs in the operator's `~/.ssh/config`.
+
+Restarting PlayDeck (dev) loads the deploy. Leave `--launch` unused unless the user asks to start it. The library item PlayDeck is the Flatpak and is left as it is.
+
+The procedure is recorded in `docs/DESIGN.md`, section 12.

@@ -2,7 +2,14 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { createWriteStream, existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
-import { CHANNELS, type PlayerEvent, type PlayerOptions, type PlaySession } from '../shared/bridge';
+import {
+  ALL_STATS_SECTIONS,
+  CHANNELS,
+  type PlayerEvent,
+  type PlayerOptions,
+  type PlaySession,
+  type StatsSection,
+} from '../shared/bridge';
 import { GamepadReader } from './gamepad';
 import { GamescopeControl, refreshFor } from './gamescope';
 import { MpvIpc, type MpvMessage } from './mpvIpc';
@@ -83,6 +90,35 @@ interface Run {
   stopping: boolean;
   endedEmitted: boolean;
   finished: boolean;
+}
+
+/** Turns one `playdeck-event` payload into a player event. `stop` is returned for the caller to handle. */
+export function parseClientEvent(payload: string): PlayerEvent | { type: 'stop' } | null {
+  const event = JSON.parse(payload) as {
+    type?: unknown;
+    audio?: unknown;
+    subtitle?: unknown;
+    on?: unknown;
+    sections?: unknown;
+    scale?: unknown;
+    mode?: unknown;
+  };
+  const id = (value: unknown) => (typeof value === 'number' ? value : undefined);
+  if (event.type === 'tracks') return { type: 'tracks', audio: id(event.audio), subtitle: id(event.subtitle) };
+  if (event.type === 'next') return { type: 'next' };
+  if (event.type === 'stop') return { type: 'stop' };
+  if (event.type === 'networkMonitor') return { type: 'networkMonitor', on: event.on === true };
+  if (event.type === 'statsSections' && Array.isArray(event.sections)) {
+    const sections = event.sections.filter((section): section is StatsSection =>
+      typeof section === 'string' && (ALL_STATS_SECTIONS as readonly string[]).includes(section),
+    );
+    return { type: 'statsSections', sections };
+  }
+  if (event.type === 'statsWaveform' && (event.mode === 'rgb' || event.mode === 'luma')) {
+    return { type: 'statsWaveform', mode: event.mode };
+  }
+  if (event.type === 'subtitleScale' && typeof event.scale === 'number') return { type: 'subtitleScale', scale: event.scale };
+  return null;
 }
 
 /**
@@ -292,20 +328,10 @@ export class Player {
       case 'client-message': {
         const [name, payload] = message.args ?? [];
         if (name !== 'playdeck-event' || !payload) return;
-        const event = JSON.parse(payload) as {
-          type: string;
-          audio?: unknown;
-          subtitle?: unknown;
-          on?: unknown;
-          scale?: unknown;
-        };
-        const id = (value: unknown) => (typeof value === 'number' ? value : undefined);
-        if (event.type === 'tracks') this.emit({ type: 'tracks', audio: id(event.audio), subtitle: id(event.subtitle) });
-        else if (event.type === 'next') this.emit({ type: 'next' });
-        else if (event.type === 'stop') this.stop();
-        else if (event.type === 'networkMonitor') this.emit({ type: 'networkMonitor', on: event.on === true });
-        else if (event.type === 'subtitleScale' && typeof event.scale === 'number')
-          this.emit({ type: 'subtitleScale', scale: event.scale });
+        const event = parseClientEvent(payload);
+        if (!event) return;
+        if (event.type === 'stop') this.stop();
+        else this.emit(event);
         return;
       }
     }

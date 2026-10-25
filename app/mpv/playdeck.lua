@@ -39,12 +39,19 @@ local SAMPLES = 60
 
 -- ASS colors are BGR; alpha 00 is opaque.
 local TEXT, MUTED, ACCENT, WARN = 'F5F2F2', 'A69A9A', '0DA0E5', '6B6BF0'
+local GREEN, TEAL, PURPLE = '8DD36F', 'C2C85C', 'F09CA9'
 local SURFACE, BAR_BG, BLACK = '1D1717', '0F0B0B', '000000'
 local GLYPH, GLYPH_TEXT, GLYPH_ALPHA = 'F5F2F2', '111111', '14'
 
 local SPEEDS = { 0.5, 0.75, 1, 1.25, 1.5, 2 }
+local STATS_ORDER = { 'video', 'timing', 'audio', 'network', 'scope' }
+local scope_layout
 
 local session
+local run_dir = '/tmp'
+local scope_shader_path
+local scope_seq = 0
+local last_shader_sig = ''
 local final_credits -- the last credits marker, where the next-episode card appears
 local mapped = {} -- session track id -> mpv track id
 local loading_next = false
@@ -52,6 +59,7 @@ local next_timer
 
 local state = {
   osd = false,
+  stats = false,
   menu = nil,
   toast = nil,
   scrub = nil,
@@ -63,6 +71,8 @@ local state = {
   stop_armed = false, -- B was pressed once; again within STOP_WINDOW stops
   stop_releasing = false, -- second B is held; quit fires on key-up so B is not down during handoff
 }
+
+local stats_sections = nil -- map of section -> bool, initialized from first session
 
 -- Read rates in bits/s, false while the cache was not reading (full, or the whole file is in).
 local net = { on = nil, samples = {}, sum = 0, count = 0, rate = nil, last = nil, ahead = 0, bytes = 0, idle = false, eof = false }
@@ -213,6 +223,15 @@ local function glyph(kind, x, cy)
       cx + 4, cy + 12, cx - 4, cy + 12, cx - 4, cy + 4, cx - 12, cy + 4, cx - 12, cy - 4, cx - 4, cy - 4),
       GLYPH, GLYPH_ALPHA)
     return 24
+  elseif kind == 'down' then
+    local cx = x + 12
+    shape(string.format('m %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f '
+      .. 'l %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f l %.1f %.1f',
+      cx - 4, cy - 12, cx + 4, cy - 12, cx + 4, cy - 4, cx + 12, cy - 4, cx + 12, cy + 4, cx + 4, cy + 4,
+      cx + 4, cy + 12, cx - 4, cy + 12, cx - 4, cy + 4, cx - 12, cy + 4, cx - 12, cy - 4, cx - 4, cy - 4),
+      GLYPH, '90')
+    shape(rounded(cx - 4, cy + 2, cx + 4, cy + 12, 1.5), GLYPH, '00')
+    return 24
   elseif kind == 'menu' then
     box(x, cy - 11, x + 34, cy + 11, GLYPH, GLYPH_ALPHA, 6)
     for i = -1, 1 do
@@ -232,7 +251,7 @@ local function glyph(kind, x, cy)
 end
 
 local function glyph_width(kind)
-  return kind == 'dpad' and 24 or kind == 'menu' and 34 or kind == 'lb-rb' and 72 or 26
+  return (kind == 'dpad' or kind == 'down') and 24 or kind == 'menu' and 34 or kind == 'lb-rb' and 72 or 26
 end
 
 -- A row of hints laid out leftwards from x; returns the left edge.
@@ -301,12 +320,30 @@ local function toast(body)
 end
 
 local quitting = false
+local sync_scope_shader
+
+local function clear_scope_shader()
+  local list = mp.get_property_native('glsl-shaders')
+  if type(list) == 'table' then
+    local kept = {}
+    for _, path in ipairs(list) do
+      if type(path) ~= 'string' or not path:find('playdeck-scope-', 1, true) then kept[#kept + 1] = path end
+    end
+    if #kept ~= #list then mp.set_property_native('glsl-shaders', kept) end
+  end
+  if scope_shader_path then
+    os.remove(scope_shader_path)
+    scope_shader_path = nil
+  end
+  last_shader_sig = ''
+end
 
 local function quit()
   if quitting then return end
   quitting = true
   if stop_timer then stop_timer:kill() end
-  state.osd, state.menu, state.stop_armed, state.stop_releasing, state.next_card, state.toast = false, nil, false, false, nil, nil
+  state.osd, state.stats, state.menu, state.stop_armed, state.stop_releasing, state.next_card, state.toast = false, false, nil, false, false, nil, nil
+  clear_scope_shader()
   mp.set_property_bool('pause', true)
   show_curtain()
   draw()
@@ -324,9 +361,40 @@ local function arm_stop()
   end)
 end
 
-local function set_network(on)
-  net.on = on
-  emit({ type = 'networkMonitor', on = on })
+local function has_stat(name)
+  return stats_sections ~= nil and stats_sections[name] == true
+end
+
+-- Stats stay up beside the playback menu. The track menu covers the screen, so the HUD yields.
+local function cards_visible()
+  return state.stats and not curtain and not loading_next and not (state.menu and state.menu.kind == 'tracks')
+end
+
+local function emit_stats_sections()
+  local list = {}
+  for _, name in ipairs(STATS_ORDER) do
+    if stats_sections and stats_sections[name] then list[#list + 1] = name end
+  end
+  emit({ type = 'statsSections', sections = list })
+end
+
+local function toggle_stat(name)
+  if not stats_sections then return end
+  stats_sections[name] = not stats_sections[name]
+  if stats_sections[name] then state.stats = true end
+  emit_stats_sections()
+  if sync_scope_shader then sync_scope_shader() end
+end
+
+local function waveform_mode()
+  return session and session.statsWaveform == 'luma' and 'luma' or 'rgb'
+end
+
+local function toggle_waveform()
+  if not session then return end
+  session.statsWaveform = waveform_mode() == 'luma' and 'rgb' or 'luma'
+  emit({ type = 'statsWaveform', mode = session.statsWaveform })
+  if sync_scope_shader then sync_scope_shader() end
 end
 
 local function sample_network()
@@ -618,6 +686,16 @@ local function emit_sub_scale()
   emit({ type = 'subtitleScale', scale = math.floor((mp.get_property_number('sub-scale') or 1) * 100 + 0.5) })
 end
 
+local function stat_toggle(name, label)
+  return {
+    label = label,
+    toggle = true,
+    step = function() toggle_stat(name) end,
+    reset = function() toggle_stat(name) end,
+    value = function() return S(has_stat(name) and 'osd.on' or 'osd.off') end,
+  }
+end
+
 local PLAYBACK_ROWS = {
   { label = 'osd.speed', step = step_speed, reset = function() mp.set_property_number('speed', 1) end,
     value = function() return string.format('%g×', mp.get_property_number('speed') or 1) end },
@@ -630,9 +708,13 @@ local PLAYBACK_ROWS = {
   { label = 'osd.subtitleSize', step = function(d) adjust('sub-scale', d * 0.1, 0.5, 2.5); emit_sub_scale() end,
     reset = function() mp.set_property_number('sub-scale', 1); emit_sub_scale() end,
     value = function() return string.format('%d%%', math.floor((mp.get_property_number('sub-scale') or 1) * 100 + 0.5)) end },
-  { label = 'osd.networkMonitor', toggle = true, step = function() set_network(not net.on) end,
-    reset = function() set_network(not net.on) end,
-    value = function() return S(net.on and 'osd.on' or 'osd.off') end },
+  stat_toggle('video', 'osd.statsVideo'),
+  stat_toggle('timing', 'osd.statsTiming'),
+  stat_toggle('audio', 'osd.statsAudio'),
+  stat_toggle('network', 'osd.statsNetwork'),
+  stat_toggle('scope', 'osd.statsScope'),
+  { label = 'osd.statsWaveform', toggle = true, step = function() toggle_waveform() end, reset = function() toggle_waveform() end,
+    value = function() return S(waveform_mode() == 'luma' and 'osd.waveformLuma' or 'osd.waveformRgb') end },
 }
 
 local function open_tracks()
@@ -753,7 +835,7 @@ local function draw_osd()
     { 'y', S('osd.tracks') },
     { 'x', S('osd.stats') },
     { 'a', S(props.paused and 'osd.play' or 'osd.pause') },
-    { 'b', S('osd.hide') },
+    { 'down', S('osd.hide') },
   })
 end
 
@@ -783,7 +865,7 @@ local function draw_next_card()
     text(x0 + 20, y0 + 70, 7, 16, MUTED, session.next.subtitle, { clip = { x0, y0, x1 - 16, y1 } })
   end
   local cy = y1 - 28
-  hint_row({ { 'a', S('osd.playNow') }, { 'b', S('osd.cancel') } }, x1 - 20, cy, 15)
+  hint_row({ { 'a', S('osd.playNow') }, { 'down', S('osd.cancel') } }, x1 - 20, cy, 15)
   if card.remaining then
     text(x0 + 20, cy, 4, 15, ACCENT, S('osd.nextIn', { n = math.max(1, math.ceil(card.remaining)) }), { bold = true })
     local fraction = card.remaining / NEXT_COUNTDOWN
@@ -836,10 +918,13 @@ local function draw_tracks(menu)
 end
 
 local function draw_playback(menu)
-  local pw, row_h = 560, 56
+  local row_h = 50
   local ph = 84 + #PLAYBACK_ROWS * row_h
-  local x0 = (res_x - pw) / 2
-  local y0 = (res_y - HINTS_HEIGHT - ph) / 2
+  local reserved_left = cards_visible() and (MARGIN + 300 + 16) or 0
+  local reserved_right = (cards_visible() and has_stat('scope') and scope_layout) and (res_x - scope_layout().x0 + 12) or 0
+  local pw = math.max(360, math.min(640, res_x - reserved_left - reserved_right - 24))
+  local x0 = reserved_left + math.max(12, (res_x - reserved_left - reserved_right - pw) / 2)
+  local y0 = math.max(16, (res_y - HINTS_HEIGHT - ph) / 2)
   box(x0, y0, x0 + pw, y0 + ph, SURFACE, '08', 16)
   text(x0 + 32, y0 + 40, 4, 22, TEXT, S('osd.playback'), { bold = true })
   for i, row in ipairs(PLAYBACK_ROWS) do
@@ -847,7 +932,7 @@ local function draw_playback(menu)
     local focused = menu.cursor == i
     if focused then box(x0 + 16, ry, x0 + pw - 16, ry + row_h - 6, 'FFFFFF', 'E0', 10) end
     local cy = ry + (row_h - 6) / 2
-    text(x0 + 32, cy, 4, 19, focused and TEXT or MUTED, S(row.label))
+    text(x0 + 32, cy, 4, 19, focused and TEXT or MUTED, S(row.label), { clip = { x0 + 28, ry, x0 + pw - 132, ry + row_h } })
     local value = row.value()
     text(x0 + pw - 32, cy, 6, 19, TEXT, (focused and '‹  ' or '') .. value .. (focused and '  ›' or ''), { bold = true })
   end
@@ -893,31 +978,430 @@ local function draw_graph(x0, y0, x1, y1, bitrate)
   end
 end
 
-local function draw_network()
-  local x0, y0, w = MARGIN, 28, 300
-  local x1 = x0 + w
-  local graph_y0, graph_y1 = y0 + 76, y0 + 120
-  local y1 = graph_y1 + 68
-  box(x0, y0, x1, y1, SURFACE, '30', 14)
-  local status = net.eof and 'osd.cachedAll' or net.idle and 'osd.cacheFull' or 'osd.reading'
-  text(x0 + 16, y0 + 20, 4, 14, MUTED, S('osd.network'), { bold = true })
-  text(x1 - 16, y0 + 20, 6, 14, MUTED, S(status))
-  local bitrate = session.bitrate and session.bitrate * 1000
-  -- While the cache is not reading, the last rate it read at stays, dimmed.
-  local shown = net.rate or net.last
-  local color = not net.rate and MUTED or (bitrate and net.rate < bitrate) and WARN or TEXT
-  text(x0 + 16, y0 + 52, 4, 26, color, shown and rate_text(shown) or '—', { bold = true })
-  draw_graph(x0 + 16, graph_y0, x1 - 16, graph_y1, bitrate)
-  if bitrate then text(x0 + 16, graph_y1 + 20, 4, 14, MUTED, S('osd.bitrate', { rate = rate_text(bitrate) })) end
-  if net.count > 0 then
-    text(x1 - 16, graph_y1 + 20, 6, 14, MUTED, S('osd.average', { rate = rate_text(net.sum / net.count) }))
-  end
-  text(x0 + 16, graph_y1 + 46, 4, 15, TEXT, S('osd.ahead', { time = clock(net.ahead), size = size_text(net.bytes) }))
+-- Stats HUD ---------------------------------------------------------------------------------------
+
+local STATS_W = 300
+local SCOPE_HEADER = 32
+local WAVE_H = 156
+local SCOPE_GUTTER = 42
+local SCOPE_PAD = 12
+local SCOPE_GAP = 10
+local TRC_NAME = {
+  pq = 'PQ', smpte2084 = 'PQ', hlg = 'HLG', ['arib-std-b67'] = 'HLG',
+  ['bt.1886'] = 'BT.1886', bt1886 = 'BT.1886', srgb = 'sRGB', gamma22 = 'Gamma 2.2', gamma28 = 'Gamma 2.8',
+}
+local PRIM_NAME = { ['bt.709'] = 'BT.709', ['bt.2020'] = 'BT.2020', ['display-p3'] = 'P3', ['dci-p3'] = 'DCI-P3' }
+local HW_NAME = { vaapi = 'VA-API', ['vaapi-copy'] = 'VA-API', nvdec = 'NVDEC', vulkan = 'Vulkan', videotoolbox = 'VT' }
+local CODEC_NAME = { hevc = 'HEVC', h264 = 'H.264', av1 = 'AV1', vp9 = 'VP9', avc = 'H.264' }
+local scope_template
+
+local function prop(name)
+  local value = mp.get_property(name)
+  if value == nil or value == '' then return nil end
+  return value
 end
 
--- The track menu covers the panel's corner; the playback menu leaves it clear, to show its own switch.
-local function network_visible()
-  return net.on and not (state.menu and state.menu.kind == 'tracks')
+local function join_dot(parts)
+  local list = {}
+  for _, part in ipairs(parts) do
+    if part and part ~= '' then list[#list + 1] = part end
+  end
+  return #list > 0 and table.concat(list, ' · ') or '—'
+end
+
+local function selected_video()
+  for _, track in ipairs(mp.get_property_native('track-list') or {}) do
+    if track.type == 'video' and track.selected then return track end
+  end
+end
+
+local function depth_of(pix)
+  if not pix then return nil end
+  local lowered = pix:lower()
+  local n = tonumber(lowered:match('p0?(%d%d)') or lowered:match('(%d%d)le') or lowered:match('(%d%d)be'))
+  if n and n >= 8 and n <= 16 then return n .. '-bit' end
+  if lowered == 'yuv420p' or lowered == 'nv12' or lowered:find('rgb24', 1, true) then return '8-bit' end
+end
+
+local function dr_badge()
+  local profile = tonumber(selected_video() and selected_video()['dolby-vision-profile'])
+  if profile and profile > 0 then return 'DV ' .. profile, PURPLE end
+  local gamma = prop('video-params/gamma') or ''
+  if gamma == 'pq' or gamma == 'smpte2084' then return 'HDR10', ACCENT end
+  if gamma == 'hlg' or gamma == 'arib-std-b67' then return 'HLG', ACCENT end
+  return 'SDR', MUTED
+end
+
+local function hw_badge()
+  local hw = prop('hwdec-current') or 'no'
+  if hw == 'no' then return 'SW', ACCENT end
+  return HW_NAME[hw] or hw:upper(), GREEN
+end
+
+local function signal_text(prefix)
+  local gamma = prop(prefix .. '/gamma')
+  local prim = prop(prefix .. '/primaries')
+  return join_dot({ gamma and (TRC_NAME[gamma] or gamma), prim and (PRIM_NAME[prim] or prim) })
+end
+
+local function scope_mode()
+  local gamma = prop('video-out-params/gamma') or prop('video-params/gamma') or ''
+  local prim = prop('video-out-params/primaries') or prop('video-params/primaries') or ''
+  local pq = (gamma == 'pq' or gamma == 'smpte2084') and 1 or 0
+  local prim_id = prim == 'bt.2020' and 1 or (prim == 'display-p3' or prim == 'dci-p3') and 2 or 0
+  local peak = math.max(50, math.min(1000, tonumber(session and session.hdrSubtitleBrightness) or 203))
+  return pq, prim_id, peak
+end
+
+local function pq_code(nits)
+  local m1, m2 = 0.1593017578125, 78.84375
+  local c1, c2, c3 = 0.8359375, 18.8515625, 18.6875
+  local p = (math.max(nits, 0) / 10000) ^ m1
+  return ((c1 + c2 * p) / (1 + c3 * p)) ^ m2
+end
+
+-- The OUTPUT hook only covers the fitted picture. Margins are the black bars around it, in window pixels.
+local function video_box()
+  local dims = mp.get_property_native('osd-dimensions') or {}
+  local ow, oh = dims.w or 0, dims.h or 0
+  if ow < 2 or oh < 2 then
+    return { x = 0, y = 0, w = res_x, h = res_y, ml = 0, mt = 0, sx = 1, sy = 1 }
+  end
+  local ml, mr = dims.ml or 0, dims.mr or 0
+  local mt, mb = dims.mt or 0, dims.mb or 0
+  local sx, sy = ow / res_x, oh / res_y
+  return {
+    x = ml / sx, y = mt / sy,
+    w = math.max(1, ow - ml - mr) / sx,
+    h = math.max(1, oh - mt - mb) / sy,
+    ml = ml, mt = mt, sx = sx, sy = sy,
+  }
+end
+
+local function left_stats_open()
+  return has_stat('video') or has_stat('timing') or has_stat('audio') or has_stat('network')
+end
+
+-- Waveform above the gamut. The panel is 60% of its previous width, and it stays inside the
+-- picture so the shader and the labels share one rectangle.
+scope_layout = function()
+  local video = video_box()
+  local left = left_stats_open() and (MARGIN + STATS_W + 16) or MARGIN
+  local available = math.max(220, res_x - left - MARGIN)
+  local w = math.floor(available * 0.6 * 0.6)
+  local inset = 12
+  w = math.max(200, math.min(w, math.max(200, video.w - inset * 2)))
+  local x1 = math.min(res_x - MARGIN, video.x + video.w - inset)
+  local x0 = math.max(video.x + inset, x1 - w)
+  if x0 > x1 then x0 = x1 end
+  w = math.max(1, x1 - x0)
+  local y0 = math.max(video.y + inset, state.osd and 72 or (video.y + inset))
+  local bottom = video.y + video.h - inset
+  if state.osd then bottom = math.min(bottom, res_y - HINTS_HEIGHT - 72) end
+  local room = math.max(160, bottom - y0)
+  local inner_w = math.max(80, w - SCOPE_GUTTER - SCOPE_PAD)
+  local wave_h = math.min(WAVE_H, math.floor(room * 0.36))
+  -- The horseshoe is a square under the waveform. Cap it so the per-pixel cloud stays cheap on Deck.
+  local gam = math.min(inner_w, 280, room - SCOPE_HEADER - wave_h - SCOPE_GAP - SCOPE_PAD)
+  if gam < 96 then
+    wave_h = math.max(64, room - SCOPE_HEADER - 96 - SCOPE_GAP - SCOPE_PAD)
+    gam = math.max(72, math.min(inner_w, room - SCOPE_HEADER - wave_h - SCOPE_GAP - SCOPE_PAD))
+  end
+  local h = math.min(room, SCOPE_HEADER + wave_h + SCOPE_GAP + gam + SCOPE_PAD)
+  return {
+    x0 = x0, y0 = y0, w = w, h = h, video = video,
+    wf_x = x0 + SCOPE_GUTTER, wf_y = y0 + SCOPE_HEADER, wf_w = inner_w, wf_h = wave_h,
+    gam_x = x0 + SCOPE_GUTTER + (inner_w - gam) / 2,
+    gam_y = y0 + SCOPE_HEADER + wave_h + SCOPE_GAP, gam = gam,
+  }
+end
+
+local function load_scope_template()
+  if scope_template then return scope_template end
+  local source = debug.getinfo(1, 'S').source
+  if source:sub(1, 1) == '@' then source = source:sub(2) end
+  local path = (source:match('^(.*)/') or '.') .. '/scope.glsl'
+  local handle = io.open(path, 'r')
+  if not handle then
+    msg.warn('missing scope shader: ' .. path)
+    return nil
+  end
+  scope_template = handle:read('*a')
+  handle:close()
+  return scope_template
+end
+
+local function shader_number(value)
+  return string.format('%.2f', value)
+end
+
+sync_scope_shader = function()
+  if not (cards_visible() and has_stat('scope')) then
+    clear_scope_shader()
+    return
+  end
+  local template = load_scope_template()
+  local dims = mp.get_property_native('osd-dimensions') or {}
+  local ow, oh = dims.w or 0, dims.h or 0
+  if not template or ow < 2 or oh < 2 then return end
+  local layout = scope_layout()
+  local pq, prim, peak = scope_mode()
+  local video = layout.video
+  local function hookx(v) return v * video.sx - video.ml end
+  local function hooky(v) return v * video.sy - video.mt end
+  local function hooks(v) return v * video.sx end
+  local function hookt(v) return v * video.sy end
+  local values = {
+    PQ = pq, PRIM = prim, PEAK = string.format('%.1f', peak),
+    LUMA = waveform_mode() == 'luma' and 1 or 0,
+    RADIUS = shader_number(12 * video.sx),
+    CARD_X = shader_number(hookx(layout.x0)), CARD_Y = shader_number(hooky(layout.y0)),
+    CARD_W = shader_number(hooks(layout.w)), CARD_H = shader_number(hookt(layout.h)),
+    WAVE_X = shader_number(hookx(layout.wf_x)), WAVE_Y = shader_number(hooky(layout.wf_y)),
+    WAVE_W = shader_number(hooks(layout.wf_w)), WAVE_H = shader_number(hookt(layout.wf_h)),
+    GAMUT_X = shader_number(hookx(layout.gam_x)), GAMUT_Y = shader_number(hooky(layout.gam_y)),
+    GAMUT_S = shader_number(math.min(hooks(layout.gam), hookt(layout.gam))),
+  }
+  local sig = ''
+  for _, name in ipairs({
+    'PQ', 'PRIM', 'PEAK', 'LUMA', 'RADIUS', 'CARD_X', 'CARD_Y', 'CARD_W', 'CARD_H',
+    'WAVE_X', 'WAVE_Y', 'WAVE_W', 'WAVE_H', 'GAMUT_X', 'GAMUT_Y', 'GAMUT_S',
+  }) do
+    sig = sig .. name .. '=' .. values[name] .. ';'
+  end
+  if sig == last_shader_sig then return end
+  local body = template:gsub('@([%w_]+)@', function(key)
+    return values[key] ~= nil and tostring(values[key]) or nil
+  end)
+  scope_seq = scope_seq + 1
+  local path = string.format('%s/playdeck-scope-%d.glsl', run_dir, scope_seq)
+  local previous = scope_shader_path
+  local handle = io.open(path, 'w')
+  if not handle then
+    msg.warn('could not write scope shader')
+    return
+  end
+  handle:write(body)
+  handle:close()
+  scope_shader_path = path
+  last_shader_sig = sig
+  local kept = {}
+  local list = mp.get_property_native('glsl-shaders')
+  if type(list) == 'table' then
+    for _, item in ipairs(list) do
+      if type(item) == 'string' and not item:find('playdeck-scope-', 1, true) then kept[#kept + 1] = item end
+    end
+  end
+  kept[#kept + 1] = path
+  mp.set_property_native('glsl-shaders', kept)
+  if previous and previous ~= path then os.remove(previous) end
+end
+
+local function card_box(x, y, w, h)
+  box(x, y, x + w, y + h, SURFACE, '28', 12)
+end
+
+local function stat_line(x, y, w, body, color)
+  text(x + 14, y, 4, 15, color or TEXT, body, { clip = { x + 12, y - 12, x + w - 12, y + 14 } })
+end
+
+local function draw_badges(x_right, y, badges)
+  local rx = x_right
+  for i = #badges, 1, -1 do
+    local label, color = badges[i][1], badges[i][2]
+    local bw = width(label, 11, true) + 14
+    rx = rx - bw
+    box(rx, y - 9, rx + bw, y + 9, color, 'C4', 7)
+    text(rx + bw / 2, y, 5, 11, color, label, { bold = true })
+    rx = rx - 6
+  end
+end
+
+local function draw_video_card(x, y, w)
+  local codec = prop('video-format') or prop('video-codec') or ''
+  codec = CODEC_NAME[codec:lower()] or (codec ~= '' and codec:upper() or nil)
+  local vw, vh = mp.get_property_number('video-params/w'), mp.get_property_number('video-params/h')
+  local resolution = (vw and vh) and string.format('%d×%d', vw, vh) or nil
+  local pix = prop('video-params/hw-pixelformat') or prop('video-params/pixelformat')
+  local lines = {
+    join_dot({ codec, resolution, depth_of(pix) }),
+    signal_text('video-params'),
+    '→  ' .. signal_text('video-out-params'),
+  }
+  local bitrate = mp.get_property_number('video-bitrate')
+  if not (bitrate and bitrate > 0) and session.bitrate and session.bitrate > 0 then bitrate = session.bitrate * 1000 end
+  if bitrate and bitrate > 0 then lines[#lines + 1] = rate_text(bitrate) end
+  local mastering = {}
+  local peak = mp.get_property_number('video-params/max-luma')
+  local cll = mp.get_property_number('video-params/max-cll')
+  local fall = mp.get_property_number('video-params/max-fall')
+  local out_peak = mp.get_property_number('video-out-params/max-luma')
+  if peak and peak > 0 then mastering[#mastering + 1] = string.format('Peak %.0f nits', peak) end
+  if cll and cll > 0 then mastering[#mastering + 1] = string.format('MaxCLL %.0f', cll) end
+  if fall and fall > 0 then mastering[#mastering + 1] = string.format('MaxFALL %.0f', fall) end
+  if out_peak and out_peak > 0 then mastering[#mastering + 1] = string.format('Out %.0f nits', out_peak) end
+  if #mastering > 0 then lines[#lines + 1] = table.concat(mastering, ' · ') end
+  local h = 40 + #lines * 22 + 8
+  card_box(x, y, w, h)
+  text(x + 14, y + 18, 4, 13, ACCENT, S('osd.cardVideo'), { bold = true })
+  local dr, dr_color = dr_badge()
+  local hw, hw_color = hw_badge()
+  draw_badges(x + w - 12, y + 18, { { dr, dr_color }, { hw, hw_color } })
+  for i, line in ipairs(lines) do stat_line(x, y + 24 + i * 22, w, line) end
+  return h
+end
+
+local function pass_last_ms()
+  local vo = mp.get_property_native('vo-passes')
+  if type(vo) ~= 'table' then return nil end
+  local passes = vo.fresh or vo.redraw or vo.render
+  if type(passes) ~= 'table' then
+    for _, value in pairs(vo) do
+      if type(value) == 'table' then passes = value break end
+    end
+  end
+  if type(passes) ~= 'table' then return nil end
+  local sum, any = 0, false
+  for _, pass in ipairs(passes) do
+    if type(pass) == 'table' and type(pass.last) == 'number' then
+      any, sum = true, sum + pass.last
+    end
+  end
+  -- mpv reports pass times in nanoseconds (stats.lua shows them in microseconds).
+  return any and sum / 1e6 or nil
+end
+
+local function draw_timing_card(x, y, w)
+  local src = mp.get_property_number('container-fps') or mp.get_property_number('estimated-vf-fps')
+  local disp = mp.get_property_number('display-fps') or mp.get_property_number('estimated-display-fps')
+  local fps = join_dot({
+    src and string.format('%.3f fps', src) or nil,
+    disp and string.format('%.2f Hz', disp) or nil,
+  })
+  if src and disp and src > 0 then
+    fps = fps .. string.format('  ·  ×%.2f', disp / src)
+  end
+  local drops = mp.get_property_number('frame-drop-count') or 0
+  local decoded = mp.get_property_number('decoder-frame-drop-count') or 0
+  local mistimed = mp.get_property_number('mistimed-frame-count') or 0
+  local delayed = mp.get_property_number('vo-delayed-frame-count') or 0
+  local drop_color = (drops + decoded) > 0 and WARN or mistimed > 0 and ACCENT or GREEN
+  local av = mp.get_property_number('avsync')
+  local sync = '—'
+  local sync_color = MUTED
+  if av then
+    sync = string.format('%+.0f ms', av * 1000)
+    local jitter = mp.get_property_number('vsync-jitter')
+    if jitter then sync = sync .. string.format(' · %.1f ms', math.abs(jitter) * 1000) end
+    sync_color = math.abs(av) > 0.04 and WARN or math.abs(av) > 0.02 and ACCENT or GREEN
+  end
+  local ms = pass_last_ms()
+  local budget = 1000 / math.max(disp or 60, 1)
+  local frac = ms and math.max(0, math.min(1.5, ms / budget)) or 0
+  local bar_color = not ms and MUTED or frac < 0.75 and GREEN or frac < 1 and ACCENT or WARN
+  local h = 140
+  card_box(x, y, w, h)
+  text(x + 14, y + 18, 4, 13, drop_color, S('osd.cardTiming'), { bold = true })
+  local sync_name = prop('video-sync')
+  if sync_name then
+    local short = sync_name:gsub('^display%-', ''):gsub('^resample%-', '')
+    draw_badges(x + w - 12, y + 18, { { short, MUTED } })
+  end
+  stat_line(x, y + 44, w, fps)
+  local label = ms and string.format('%.2f / %.1f ms', ms, budget) or '—'
+  stat_line(x, y + 66, w, label, bar_color)
+  local bar_w = w - 28
+  box(x + 14, y + 80, x + 14 + bar_w, y + 86, 'FFFFFF', 'D0', 3)
+  local fill = bar_w * math.min(frac, 1)
+  if fill >= 1 then box(x + 14, y + 80, x + 14 + fill, y + 86, bar_color, '00', 3) end
+  stat_line(x, y + 102, w, sync, sync_color)
+  stat_line(x, y + 124, w, string.format('VO %d · Dec %d · mistime %d · late %d', drops, decoded, mistimed, delayed), drop_color)
+  return h
+end
+
+local function draw_audio_card(x, y, w)
+  local codec = prop('audio-codec-name') or prop('audio-codec')
+  local layout = prop('audio-params/hr-channels')
+  local channels = mp.get_property_number('audio-params/channel-count')
+  local rate = mp.get_property_number('audio-params/samplerate')
+  local format = prop('audio-params/format')
+  local bitrate = mp.get_property_number('audio-bitrate')
+  local lines = {
+    codec or '—',
+    join_dot({ layout or (channels and channels .. ' ch' or nil), rate and string.format('%.1f kHz', rate / 1000) or nil, format }),
+    (bitrate and bitrate > 0) and rate_text(bitrate) or '—',
+  }
+  local h = 40 + #lines * 22 + 8
+  card_box(x, y, w, h)
+  text(x + 14, y + 18, 4, 13, TEAL, S('osd.cardAudio'), { bold = true })
+  local ao = prop('current-ao')
+  if ao then draw_badges(x + w - 12, y + 18, { { ao, TEAL } }) end
+  for i, line in ipairs(lines) do stat_line(x, y + 24 + i * 22, w, line) end
+  return h
+end
+
+local function draw_network_card(x, y, w)
+  local h = 158
+  card_box(x, y, w, h)
+  local status = net.eof and 'osd.cachedAll' or net.idle and 'osd.cacheFull' or 'osd.reading'
+  text(x + 14, y + 18, 4, 13, PURPLE, S('osd.cardNetwork'), { bold = true })
+  draw_badges(x + w - 12, y + 18, { { S(status), MUTED } })
+  local bitrate = session.bitrate and session.bitrate * 1000
+  local shown = net.rate or net.last
+  local color = not net.rate and MUTED or (bitrate and net.rate < bitrate) and WARN or TEXT
+  text(x + 14, y + 48, 4, 22, color, shown and rate_text(shown) or '—', { bold = true })
+  draw_graph(x + 14, y + 64, x + w - 14, y + 100, bitrate)
+  local meta = {}
+  if bitrate then meta[#meta + 1] = S('osd.bitrate', { rate = rate_text(bitrate) }) end
+  if net.count > 0 then meta[#meta + 1] = S('osd.average', { rate = rate_text(net.sum / net.count) }) end
+  stat_line(x, y + 116, w, #meta > 0 and table.concat(meta, ' · ') or '—', MUTED)
+  stat_line(x, y + 136, w, S('osd.ahead', { time = clock(net.ahead), size = size_text(net.bytes) }))
+  return h
+end
+
+local function draw_scope_card()
+  local layout = scope_layout()
+  local pq = scope_mode()
+  local title = S('osd.cardScope')
+  local badge = (waveform_mode() == 'luma' and S('osd.waveformLuma') or S('osd.waveformRgb')) .. '  ·  ' .. (pq == 1 and 'PQ · nits' or 'SDR · %')
+  local badge_w = width(badge, 11, true)
+  local badge_left = layout.x0 + layout.w - 14 - badge_w
+  text(layout.x0 + 14, layout.y0 + 18, 4, 13, TEXT, title, {
+    bold = true, border = 1.2,
+    clip = { layout.x0 + 8, layout.y0, badge_left - 8, layout.y0 + SCOPE_HEADER },
+  })
+  text(badge_left + badge_w, layout.y0 + 18, 6, 11, pq == 1 and ACCENT or MUTED, badge, { bold = true, border = 1.2 })
+  local legend = { { '2020', PURPLE }, { 'P3', ACCENT }, { '709', TEAL } }
+  local legend_w = 0
+  for _, item in ipairs(legend) do legend_w = legend_w + width(item[1], 11, true) + 10 end
+  local title_right = layout.x0 + 14 + width(title, 13, true)
+  local rx = badge_left - 8
+  if rx - legend_w > title_right + 8 then
+    for i = #legend, 1, -1 do
+      local label, color = legend[i][1], legend[i][2]
+      rx = rx - width(label, 11, true)
+      text(rx, layout.y0 + 18, 4, 11, color, label, { bold = true, border = 1 })
+      rx = rx - 10
+    end
+  end
+  local stops = pq == 1
+    and { { 10000, '10k' }, { 4000, '4k' }, { 1000, '1k' }, { 203, '203' }, { 100, '100' }, { 10, '10' }, { 1, '1' } }
+    or { { 1, '100' }, { 0.75, '75' }, { 0.5, '50' }, { 0.25, '25' }, { 0, '0' } }
+  for _, stop in ipairs(stops) do
+    local code = pq == 1 and pq_code(stop[1]) or stop[1]
+    local y = layout.wf_y + layout.wf_h * (1 - code)
+    text(layout.wf_x - 4, y, 6, 11, (pq == 1 and stop[1] == 203) and ACCENT or MUTED, stop[2], { border = 1 })
+  end
+end
+
+local function draw_stats()
+  if not cards_visible() then return end
+  local y = 22
+  if has_stat('video') then y = y + draw_video_card(MARGIN, y, STATS_W) + 8 end
+  if has_stat('timing') then y = y + draw_timing_card(MARGIN, y, STATS_W) + 8 end
+  if has_stat('audio') then y = y + draw_audio_card(MARGIN, y, STATS_W) + 8 end
+  if has_stat('network') then draw_network_card(MARGIN, y, STATS_W) end
+  if has_stat('scope') then draw_scope_card() end
 end
 
 local last_shade, last_main
@@ -954,15 +1438,17 @@ draw = function()
       draw_center(net.rate and body .. '  ·  ' .. rate_text(net.rate) or body)
     end
   end
-  if network_visible() then draw_network() end
+  draw_stats()
   if state.stop_armed then draw_stop_hint()
   elseif state.toast then draw_toast() end
   local data = table.concat(out, '\n')
-  if data == last_main then return end
-  last_main = data
-  main.res_x, main.res_y = res_x, res_y
-  main.data = data
-  main:update()
+  if data ~= last_main then
+    last_main = data
+    main.res_x, main.res_y = res_x, res_y
+    main.data = data
+    main:update()
+  end
+  sync_scope_shader()
 end
 
 -- Input --------------------------------------------------------------------------------------------
@@ -1034,7 +1520,30 @@ end
 holdable('left', direction(-1, 0))
 holdable('right', direction(1, 0))
 holdable('up', direction(0, -1))
-holdable('down', direction(0, 1))
+local last_down = 0
+holdable('down', function(count)
+  if not session or loading_next then return end
+  if state.menu then
+    menu_move(0, 1)
+    draw()
+    return
+  end
+  if count ~= 0 then return end
+  local now = mp.get_time()
+  if now - last_down < 0.08 then return end
+  last_down = now
+  if state.next_card then
+    cancel_next()
+  elseif state.osd then
+    if hide_timer then hide_timer:kill() end
+    state.osd = false
+    draw()
+  elseif state.prompt then
+    state.dismissed[state.prompt] = true
+    state.prompt = nil
+    draw()
+  end
+end)
 holdable('seek-back', function(count) if session and not state.menu then scrub(-1, count) end end)
 holdable('seek-forward', function(count) if session and not state.menu then scrub(1, count) end end)
 
@@ -1073,13 +1582,6 @@ mp.add_key_binding(nil, 'back', function(event)
     show_curtain()
     if stop_timer then stop_timer:kill() end
     stop_timer = mp.add_timeout(0.4, quit)
-  elseif state.next_card then
-    cancel_next()
-  elseif state.osd then
-    state.osd = false
-  elseif state.prompt then
-    state.dismissed[state.prompt] = true
-    state.prompt = nil
   elseif not loading_next then
     arm_stop()
   end
@@ -1117,8 +1619,14 @@ on_press('menu', function()
   draw()
 end)
 
+local last_stats = 0
 on_press('stats', function()
-  mp.commandv('script-binding', 'stats/display-stats-toggle')
+  if not session or loading_next or quitting then return end
+  local now = mp.get_time()
+  if now - last_stats < 0.08 then return end
+  last_stats = now
+  state.stats = not state.stats
+  draw()
 end)
 
 -- Session ------------------------------------------------------------------------------------------
@@ -1137,6 +1645,8 @@ local function load_session(file)
     msg.error('unreadable session file')
     return mp.commandv('quit', '3')
   end
+  local dir = file and file:match('^(.*)/')
+  if dir and dir ~= '' then run_dir = dir end
   session = parsed
   final_credits = nil
   for _, marker in ipairs(session.markers or {}) do
@@ -1145,8 +1655,18 @@ local function load_session(file)
   state.menu, state.prompt, state.scrub, state.next_card, state.next_cancelled = nil, nil, nil, nil, false
   state.dismissed, state.skipped, state.stop_armed, state.stop_releasing = {}, {}, false, false
   props.pos, props.duration, props.eof = session.start, nil, false
-  -- The panel's switch is the viewer's from the first video on; later sessions may predate a change.
-  if net.on == nil then net.on = session.networkMonitor == true end
+  -- Sections persist for the process; the next episode must not reset the viewer's choice or the HUD.
+  if stats_sections == nil then
+    stats_sections = { video = false, timing = false, audio = false, network = false, scope = false }
+    local list = session.statsSections
+    if type(list) ~= 'table' then
+      for _, name in ipairs(STATS_ORDER) do stats_sections[name] = true end
+    else
+      for _, name in ipairs(list) do
+        if stats_sections[name] ~= nil then stats_sections[name] = true end
+      end
+    end
+  end
   net.samples, net.sum, net.count, net.rate, net.last = {}, 0, 0, nil, nil
   mp.set_property_native('http-header-fields', session.httpHeaders or {})
   mp.set_property_bool('pause', true)
@@ -1243,7 +1763,7 @@ mp.add_periodic_timer(TICK, function()
     card.remaining = card.remaining - TICK
     if card.remaining <= 0 then return play_next() end
   end
-  if state.osd or card or props.buffering or network_visible() then draw() end
+  if state.osd or card or props.buffering or state.stats then draw() end
 end)
 
 mp.add_periodic_timer(SAMPLE_INTERVAL, sample_network)

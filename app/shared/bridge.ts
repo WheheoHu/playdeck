@@ -11,6 +11,10 @@ export type AudioLanguage = '' | 'ja' | 'zh' | 'en' | 'ko';
 export type SubtitleLanguage = '' | 'off' | 'zh-Hans' | 'zh-Hant' | 'zh' | 'en' | 'ja';
 export type SubtitleColor = 'white' | 'yellow' | 'gray';
 export type SubtitleBackground = 'outline' | 'box' | 'none';
+export type StatsSection = 'video' | 'timing' | 'audio' | 'network' | 'scope';
+export type WaveformMode = 'rgb' | 'luma';
+
+export const ALL_STATS_SECTIONS: readonly StatsSection[] = ['video', 'timing', 'audio', 'network', 'scope'];
 
 export interface ManualServer {
   url: string;
@@ -61,8 +65,12 @@ export interface Settings {
   /** Skip intro and credits markers without asking. */
   autoSkipMarkers: boolean;
   autoplayNext: boolean;
-  /** Keep the network panel (download speed, buffer) on screen during playback. */
+  /** Keep the network panel (download speed, buffer) on screen during playback (legacy, superseded by statsSections). */
   networkMonitor: boolean;
+  /** Which modules appear in the playback Stats HUD (toggled with X). */
+  statsSections: StatsSection[];
+  /** Waveform drawn beside the CIE 1976 gamut: RGB overlay or a single luma trace. */
+  statsWaveform: WaveformMode;
   /** Preferred audio language when Plex has not marked a track selected; '' follows the server. */
   audioLanguage: AudioLanguage;
   /** Preferred subtitle language when Plex has not marked a track selected; '' follows the server, 'off' leaves subtitles off. */
@@ -88,6 +96,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSkipMarkers: false,
   autoplayNext: true,
   networkMonitor: false,
+  statsSections: [...ALL_STATS_SECTIONS],
+  statsWaveform: 'rgb',
   audioLanguage: '',
   subtitleLanguage: '',
   subtitleScale: 100,
@@ -236,6 +246,12 @@ export interface PlaySession {
   autoSkipMarkers: boolean;
   autoplayNext: boolean;
   networkMonitor: boolean;
+  /** Enabled modules for the playback Stats HUD. */
+  statsSections: StatsSection[];
+  /** `luma` draws one brightness trace; `rgb` overlays red, green and blue. */
+  statsWaveform: WaveformMode;
+  /** Subtitle and OSD diffuse white level in nits during HDR playback (default 203). */
+  hdrSubtitleBrightness: number;
   /** OSD text in the UI language; `{n}`, `{time}`, `{rate}` and `{size}` are filled in by the script. */
   strings: Record<string, string>;
 }
@@ -263,6 +279,10 @@ export type PlayerEvent =
   | { type: 'next' }
   /** The viewer turned the network panel on or off in the OSD's playback menu. */
   | { type: 'networkMonitor'; on: boolean }
+  /** The viewer toggled one or more Stats HUD modules in the OSD's playback menu. */
+  | { type: 'statsSections'; sections: StatsSection[] }
+  /** The viewer switched the waveform between luma and RGB in the OSD or in Settings. */
+  | { type: 'statsWaveform'; mode: WaveformMode }
   /** The viewer adjusted the subtitle size in the OSD's playback menu (percentage). */
   | { type: 'subtitleScale'; scale: number }
   /** mpv exited and the UI window is back. */
